@@ -4,30 +4,35 @@ try {
   const { auth } = await import('../../lib/firebase');
   const { db, ref, getOnce, set, push } = await import('../../lib/db');
 
+  const {
+    createUserWithEmailAndPassword,
+    updateProfile,
+  } = await import('firebase/auth');
+
+  const trimmedEmail = email.trim();
+  const trimmedName = name.trim();
   const trimmedSerial = serialNumber.trim();
+  const trimmedPhone = phoneNumber.trim();
+  const trimmedMonitoredName = monitoredPersonName.trim();
 
   // ============================================================
   // STEP 1 — CREATE FIREBASE AUTH ACCOUNT FIRST
   // ============================================================
 
-  const {
-    createUserWithEmailAndPassword,
-    updateProfile
-  } = await import('firebase/auth');
-
   const userCredential = await createUserWithEmailAndPassword(
     auth,
-    email.trim(),
+    trimmedEmail,
     password
   );
 
-  const uid = userCredential.user.uid;
+  const user = userCredential.user;
+  const uid = user.uid;
 
-  await updateProfile(userCredential.user, {
-    displayName: name.trim()
+  await updateProfile(user, {
+    displayName: trimmedName,
   });
 
-  console.log('Account created:', uid);
+  console.log('Firebase Auth account created:', uid);
 
   const now = new Date().toISOString();
 
@@ -43,18 +48,20 @@ try {
   const inventorySnap = await getOnce(inventoryRef);
 
   if (!inventorySnap.exists()) {
-    await userCredential.user.delete();
+    // Remove the Auth account because the device is invalid
+    await user.delete();
 
     setError(
       'Unrecognized serial number. This device has not been provisioned by the administrator.'
     );
 
-    setLoading(false);
     return;
   }
 
+  console.log('Inventory validated:', trimmedSerial);
+
   // ============================================================
-  // STEP 3 — CHECK DEVICE
+  // STEP 3 — CHECK DEVICE RECORD
   // ============================================================
 
   const deviceRef = ref(
@@ -65,59 +72,86 @@ try {
   const deviceSnap = await getOnce(deviceRef);
 
   if (!deviceSnap.exists()) {
-    await userCredential.user.delete();
+    // Remove the Auth account because the device does not exist
+    await user.delete();
 
     setError(
       'Device serial number not recognized. Please check the number and try again.'
     );
 
-    setLoading(false);
     return;
   }
 
   const deviceData = deviceSnap.val();
 
   console.log('Device validated:', trimmedSerial);
+  console.log('Device data:', deviceData);
 
   // ============================================================
   // STEP 4 — CREATE USER PROFILE
   // ============================================================
 
-  const userRef = ref(db, `users/${uid}`);
+  const userRef = ref(
+    db,
+    `users/${uid}`
+  );
 
   await set(userRef, {
-    name: name.trim(),
-    email: email.trim(),
-    phone: phoneNumber.trim(),
+    name: trimmedName,
+    email: trimmedEmail,
+    phone: trimmedPhone,
     role: 'caregiver',
-    createdAt: now
+    createdAt: now,
   });
 
   console.log('User profile created:', uid);
 
   // ============================================================
-  // STEP 5 — EXISTING FAMILY
+  // STEP 5 — CHECK IF DEVICE ALREADY HAS A FAMILY
   // ============================================================
 
   if (deviceData.familyId) {
+    // ==========================================================
+    // EXISTING FAMILY — CREATE JOIN REQUEST
+    // ==========================================================
 
     const familyId = deviceData.familyId;
+
+    console.log(
+      'Existing family detected:',
+      familyId
+    );
+
+    // ----------------------------------------------------------
+    // Create join request
+    // ----------------------------------------------------------
 
     const joinRequestsRef = ref(
       db,
       `families/${familyId}/joinRequests`
     );
 
-    const newRequestRef = push(joinRequestsRef);
+    const newRequestRef = push(
+      joinRequestsRef
+    );
 
     await set(newRequestRef, {
       uid: uid,
-      name: name.trim(),
-      email: email.trim(),
-      phone: phoneNumber.trim(),
+      name: trimmedName,
+      email: trimmedEmail,
+      phone: trimmedPhone,
       status: 'pending',
-      createdAt: now
+      createdAt: now,
     });
+
+    console.log(
+      'Join request created:',
+      newRequestRef.key
+    );
+
+    // ----------------------------------------------------------
+    // Link user to family
+    // ----------------------------------------------------------
 
     await set(
       ref(db, `users/${uid}/familyId`),
@@ -129,7 +163,13 @@ try {
       'pending'
     );
 
-    // Registration queue
+    console.log(
+      'User linked to family with pending status.'
+    );
+
+    // ----------------------------------------------------------
+    // Add registration request to admin queue
+    // ----------------------------------------------------------
 
     const queueRef = ref(
       db,
@@ -141,18 +181,33 @@ try {
     await set(newQueueRef, {
       familyId: familyId,
       caregiverUid: uid,
-      caregiverName: name.trim(),
-      caregiverEmail: email.trim(),
+      caregiverName: trimmedName,
+      caregiverEmail: trimmedEmail,
       deviceSerialNumber: trimmedSerial,
       monitoredPersonName: '(Joining existing family)',
       createdAt: now,
-      status: 'pending_review'
+      status: 'pending_review',
     });
 
-    sendJoinRequestEmail(
-      name.trim(),
-      trimmedSerial
+    console.log(
+      'Registration added to admin queue.'
     );
+
+    // ----------------------------------------------------------
+    // Send email notification
+    // ----------------------------------------------------------
+
+    try {
+      sendJoinRequestEmail(
+        trimmedName,
+        trimmedSerial
+      );
+    } catch (emailError) {
+      console.warn(
+        'Join request email failed:',
+        emailError
+      );
+    }
 
     setInfo(
       'Your request to join this family has been sent for approval.'
@@ -162,99 +217,137 @@ try {
       onSignUpComplete('pending');
     }
 
-  } else {
+    return;
+  }
 
-    // ==========================================================
-    // STEP 6 — CREATE NEW FAMILY
-    // ==========================================================
+  // ============================================================
+  // STEP 6 — CREATE NEW FAMILY
+  // ============================================================
 
-    const familiesRef = ref(db, 'families');
+  console.log(
+    'No family found. Creating new family.'
+  );
 
-    const newFamilyRef = push(familiesRef);
+  const familiesRef = ref(
+    db,
+    'families'
+  );
 
-    const familyId = newFamilyRef.key;
+  const newFamilyRef = push(
+    familiesRef
+  );
 
-    if (!familyId) {
-      throw new Error('Could not create family ID.');
-    }
+  const familyId = newFamilyRef.key;
 
-    await set(newFamilyRef, {
+  if (!familyId) {
+    throw new Error(
+      'Could not create family ID.'
+    );
+  }
 
-      monitoredPerson: {
-        name: monitoredPersonName.trim()
+  await set(newFamilyRef, {
+    monitoredPerson: {
+      name: trimmedMonitoredName,
+    },
+
+    deviceId: trimmedSerial,
+
+    deviceSerialNumber: trimmedSerial,
+
+    caregivers: {
+      [uid]: {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        role: 'primary',
+        joinedAt: now,
       },
+    },
 
-      deviceId: trimmedSerial,
+    createdAt: now,
 
-      deviceSerialNumber: trimmedSerial,
+    status: 'active',
+  });
 
-      caregivers: {
-        [uid]: {
-          name: name.trim(),
-          email: email.trim(),
-          phone: phoneNumber.trim(),
-          role: 'primary',
-          joinedAt: now
-        }
-      },
+  console.log(
+    'Family created:',
+    familyId
+  );
 
-      createdAt: now,
+  // ============================================================
+  // STEP 7 — LINK DEVICE TO FAMILY
+  // ============================================================
 
-      status: 'active'
-    });
-
-    console.log('Family created:', familyId);
-
-    // ==========================================================
-    // STEP 7 — LINK DEVICE
-    // ==========================================================
-
-    await set(
-      ref(db, `devices/${trimmedSerial}/familyId`),
-      familyId
-    );
-
-    // ==========================================================
-    // STEP 8 — LINK USER
-    // ==========================================================
-
-    await set(
-      ref(db, `users/${uid}/familyId`),
-      familyId
-    );
-
-    await set(
-      ref(db, `users/${uid}/accessStatus`),
-      'active'
-    );
-
-    // ==========================================================
-    // STEP 9 — ADMIN REGISTRATION QUEUE
-    // ==========================================================
-
-    const queueRef = ref(
+  await set(
+    ref(
       db,
-      'admin/registrationQueue'
-    );
+      `devices/${trimmedSerial}/familyId`
+    ),
+    familyId
+  );
 
-    const newQueueRef = push(queueRef);
+  console.log(
+    'Device linked to family.'
+  );
 
-    await set(newQueueRef, {
-      familyId: familyId,
-      caregiverUid: uid,
-      caregiverName: name.trim(),
-      caregiverEmail: email.trim(),
-      deviceSerialNumber: trimmedSerial,
-      monitoredPersonName: monitoredPersonName.trim(),
-      createdAt: now,
-      status: 'pending_review'
-    });
+  // ============================================================
+  // STEP 8 — LINK USER TO FAMILY
+  // ============================================================
 
-    console.log('Registration completed.');
+  await set(
+    ref(
+      db,
+      `users/${uid}/familyId`
+    ),
+    familyId
+  );
 
-    if (onSignUpComplete) {
-      onSignUpComplete('active');
-    }
+  await set(
+    ref(
+      db,
+      `users/${uid}/accessStatus`
+    ),
+    'active'
+  );
+
+  console.log(
+    'User linked to family.'
+  );
+
+  // ============================================================
+  // STEP 9 — ADD REGISTRATION TO ADMIN QUEUE
+  // ============================================================
+
+  const queueRef = ref(
+    db,
+    'admin/registrationQueue'
+  );
+
+  const newQueueRef = push(
+    queueRef
+  );
+
+  await set(newQueueRef, {
+    familyId: familyId,
+    caregiverUid: uid,
+    caregiverName: trimmedName,
+    caregiverEmail: trimmedEmail,
+    deviceSerialNumber: trimmedSerial,
+    monitoredPersonName: trimmedMonitoredName,
+    createdAt: now,
+    status: 'pending_review',
+  });
+
+  console.log(
+    'Registration completed successfully.'
+  );
+
+  setInfo(
+    'Account created successfully. Your CareBeacon device has been registered.'
+  );
+
+  if (onSignUpComplete) {
+    onSignUpComplete('active');
   }
 
 } catch (err: any) {
