@@ -8,10 +8,9 @@
     },
     "families": {
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$familyId": {
         ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('familyId').val() === $familyId && (root.child('users').child(auth.uid).child('accessStatus').val() === 'active' || !root.child('users').child(auth.uid).child('accessStatus').exists())))",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('familyId').val() === $familyId && (root.child('users').child(auth.uid).child('accessStatus').val() === 'active' || !root.child('users').child(auth.uid).child('accessStatus').exists())))",
+        ".write": "auth != null && (!data.exists() || root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('familyId').val() === $familyId && (root.child('users').child(auth.uid).child('accessStatus').val() === 'active' || !root.child('users').child(auth.uid).child('accessStatus').exists())))",
         
         "joinRequests": {
           "$requestId": {
@@ -24,8 +23,11 @@
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$deviceId": {
-        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('families').child(root.child('users').child(auth.uid).child('familyId').val()).child('deviceId').val() === $deviceId)",
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".read": "true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        "familyId": {
+          ".write": "auth != null"
+        }
       }
     },
     "events": {
@@ -38,7 +40,17 @@
     },
     "admin": {
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "inventory": {
+        "$deviceId": {
+          ".read": "true"
+        }
+      },
+      "registrationQueue": {
+        "$queueId": {
+          ".write": "auth != null && !data.exists()"
+        }
+      }
     }
   }
 }
