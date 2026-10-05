@@ -6,13 +6,13 @@ importScripts('https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging-comp
 // messagingSenderId.
 // Note: We would ideally inject this during build, but for now we fallback to the known ID
 const firebaseConfig = {
-  apiKey: "AIzaSyBsO9SdlRPaWU8gnRO2BClErmqBhyBqxHI",
-  authDomain: "carebeacon-41b76.firebaseapp.com",
-  databaseURL: "https://carebeacon-41b76-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "carebeacon-41b76",
-  storageBucket: "carebeacon-41b76.firebasestorage.app",
-  messagingSenderId: "281184028965",
-  appId: "1:281184028965:web:f870acb5c1f3c52940b2cc"
+  apiKey: "AIzaSyBtHKQT_R6rWLW2oN5OLt0CQOKkSlDnQN8",
+  authDomain: "clone-91070.firebaseapp.com",
+  databaseURL: "https://clone-91070-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "clone-91070",
+  storageBucket: "clone-91070.firebasestorage.app",
+  messagingSenderId: "980668037537",
+  appId: "1:980668037537:web:07090fbcc33f145394f3e0"
 };
 
 firebase.initializeApp(firebaseConfig);
