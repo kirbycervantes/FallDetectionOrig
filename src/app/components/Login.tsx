@@ -99,33 +99,62 @@ export function Login({ onSignUpComplete }: LoginProps) {
       const { db, ref, getOnce, set, push } = await import('../../lib/db');
       const trimmedSerial = serialNumber.trim();
 
-      // Step 1: Validate serial number against admin-provisioned inventory
+      // ============================================================
+      // FIX:
+      // Create Firebase Auth account FIRST.
+      //
+      // Your current Firebase rules require:
+      // auth != null
+      //
+      // Therefore the browser must authenticate before reading:
+      // admin/inventory
+      // devices
+      // ============================================================
+
+      const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+
+      const uid = userCredential.user.uid;
+
+      await updateProfile(userCredential.user, {
+        displayName: name.trim(),
+      });
+
+      console.log('[SIGNUP] Firebase Auth account created');
+      console.log('[SIGNUP] UID:', uid);
+
+      // ============================================================
+      // Now the user is authenticated.
+      // Validate serial number against admin-provisioned inventory.
+      // ============================================================
+
       const inventoryRef = ref(db, `admin/inventory/${trimmedSerial}`);
       const inventorySnap = await getOnce(inventoryRef);
 
       if (!inventorySnap.exists()) {
         setError('Unrecognized serial number. This device has not been provisioned by the administrator. Please verify the serial number on your CareBeacon device.');
-        setLoading(false);
         return;
       }
 
-      // Step 2: Check if device record exists (created during provisioning)
+      console.log('[SIGNUP] Device found in inventory');
+
+      // Check if device record exists (created during provisioning)
       const deviceRef = ref(db, `devices/${trimmedSerial}`);
       const deviceSnap = await getOnce(deviceRef);
 
       if (!deviceSnap.exists()) {
         setError('Device serial number not recognized. Please check the number and try again.');
-        setLoading(false);
         return;
       }
 
       const deviceData = deviceSnap.val();
 
-      // Step 2: Create the Firebase Auth account
-      const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
-      await updateProfile(userCredential.user, { displayName: name });
+      console.log('[SIGNUP] Device verified:', trimmedSerial);
 
       const now = new Date().toISOString();
 
@@ -274,6 +303,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
     setError(errorMessage);
   };
+
   return (
     <div className="size-full flex flex-col bg-background">
       {/* Top Header */}
