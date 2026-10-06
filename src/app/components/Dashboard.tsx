@@ -691,7 +691,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                     }`}
                   >
                     <PhoneCall className="size-4" />
-                    Live Audio
+                    SMS Alerts
                   </button>
                 </li>
                 <li>
