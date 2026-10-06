@@ -66,7 +66,7 @@ export function DeviceAudio({ deviceId }: DeviceAudioProps) {
     <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
       <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
         <Phone className="size-5 text-primary" />
-        GSM Voice Call
+       SMS Alert
       </h3>
       
       <p className="text-sm text-muted-foreground mb-6">
@@ -100,7 +100,7 @@ export function DeviceAudio({ deviceId }: DeviceAudioProps) {
               className="flex-1 bg-primary text-primary-foreground py-3 px-4 rounded-xl font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
             >
               <Phone className="size-5" />
-              Request Device to Call
+              Send SMS
             </button>
           ) : (
             <button
