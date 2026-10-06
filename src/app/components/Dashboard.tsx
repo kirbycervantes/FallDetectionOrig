@@ -684,15 +684,17 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => setActiveTab('audio')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'audio' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <PhoneCall className="size-4" />
-                    SMS Alerts
-                  </button>
+                <button
+                            onClick={() => setActiveTab('audio')}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              activeTab === 'audio'
+                                ? 'bg-secondary text-primary'
+                                : 'text-foreground hover:bg-secondary/50 hover:text-primary'
+                            }`}
+                          >
+                            <MessageSquare className="size-4" />
+                            SMS Alerts
+                          </button>
                 </li>
                 <li>
                   <button
