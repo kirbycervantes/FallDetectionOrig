@@ -1,6 +1,6 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, MapPin, Activity, Bell, LogOut, User, Phone, AlertTriangle, CheckCircle, Battery, Wifi, TrendingUp, X, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, Calendar, BarChart3, AlertOctagon, Settings } from 'lucide-react';
-import { UserSettings } from './UserSettings';
+import { Plus, MapPin, Activity, Bell, LogOut, User, Phone, AlertTriangle, CheckCircle, Battery, Wifi, TrendingUp, X, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, Calendar, BarChart3, AlertOctagon, Settings, MessageSquare } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
