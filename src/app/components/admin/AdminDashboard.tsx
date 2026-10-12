@@ -3,13 +3,33 @@ import { Link } from "react-router";
 import { StatusBadge } from "./StatusBadge";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
+import { resolveEventTime } from "../../../lib/time";
+import { DEFAULT_LEVELS } from "../BatteryPanel";
+
+function familyDeviceId(f: any): string | undefined {
+  return f?.deviceId || f?.deviceSerialNumber || undefined;
+}
+
+function personName(f: any, device?: any): string {
+  return f?.monitoredPerson?.name || f?.monitoredPersonName || f?.patientName || device?.user?.name || "Unknown";
+}
+
+// Same source as the caregiver dashboard: devices/{id}/batteries, static defaults until real values arrive
+function batteryLevels(device: any) {
+  const b = device?.batteries || {};
+  return {
+    wearable: typeof b.wearable === 'number' ? b.wearable : DEFAULT_LEVELS.wearable,
+    hub: typeof b.hub === 'number' ? b.hub : DEFAULT_LEVELS.hub,
+  };
+}
 
 interface Family {
   id: string;
   name: string;
   deviceId: string;
   status: "online" | "offline" | "low_battery";
-  battery: string;
+  wearableBattery: string;
+  hubBattery: string;
   createdAt: string;
 }
 
@@ -34,111 +54,34 @@ export function AdminDashboard() {
   });
 
   useEffect(() => {
-    // 1. Fetch Families and their Devices
-    const familiesRef = ref(db, 'families');
-    const devicesRef = ref(db, 'devices');
-    const eventsRef = ref(db, 'events');
-    
-    // Using a single large listener approach for dashboard, in production we might use specific queries
-    // or Cloud Functions to aggregate this.
-    
     let currentFamilies: any = {};
     let currentDevices: any = {};
-    
-    const unsubscribeFamilies = onValue(familiesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        currentFamilies = snapshot.val();
-        updateDashboard(currentFamilies, currentDevices);
-      }
-    });
+    let currentEvents: any = {};
 
-    const unsubscribeDevices = onValue(devicesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        currentDevices = snapshot.val();
-        updateDashboard(currentFamilies, currentDevices);
-      }
-    });
-    
-    const unsubscribeEvents = onValue(eventsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const eventsData = snapshot.val();
-        const parsedIncidents: Incident[] = [];
-        let openCount = 0;
-        
-        // eventsData is keyed by deviceId
-        Object.keys(eventsData).forEach(deviceId => {
-          const deviceEvents = eventsData[deviceId];
-          // get family name for this device
-          const family = Object.values(currentFamilies).find((f: any) => f.deviceId === deviceId) as any;
-          const personName = family ? family.patientName : "Unknown Patient";
-          
-          Object.keys(deviceEvents).forEach(eventId => {
-            const ev = deviceEvents[eventId];
-            
-            if (ev.status === 'pending' || ev.status === 'emergency' || ev.status === 'unconfirmed') {
-              openCount++;
-            }
-            
-            let typeColor = "bg-primary/15";
-            let typeText = "Event";
-            
-            if (ev.status === 'pending' || ev.status === 'unconfirmed') {
-              typeColor = "bg-destructive/15";
-              typeText = "Fall detected (Unconfirmed)";
-            } else if (ev.status === 'emergency') {
-              typeColor = "bg-warning/15";
-              typeText = "SOS Button Pressed";
-            } else if (ev.status === 'confirmed') {
-              typeColor = "bg-destructive/15";
-              typeText = "Fall Confirmed";
-            } else if (ev.status === 'resolved') {
-              typeColor = "bg-success/15";
-              typeText = "Resolved";
-            } else if (ev.status === 'cancelled') {
-              typeColor = "bg-muted";
-              typeText = "Cancelled";
-            }
-
-            parsedIncidents.push({
-              id: eventId,
-              type: typeText,
-              person: personName,
-              time: new Date(ev.timestamp).toLocaleString(),
-              timestamp: new Date(ev.timestamp),
-              statusText: ev.contactNotified ? `Notified: ${ev.contactNotified}` : '',
-              typeColor
-            });
-          });
-        });
-        
-        // Sort by newest first, take top 5
-        parsedIncidents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        
-        setIncidents(parsedIncidents.slice(0, 5));
-        setStats(prev => ({ ...prev, openIncidents: openCount }));
-      }
-    });
-
-    const updateDashboard = (fams: any, devs: any) => {
+    const recompute = () => {
+      // ---- Registered families ----
       const parsedFamilies: Family[] = [];
       let onlineCount = 0;
       let totalDevs = 0;
-      
-      Object.keys(fams).forEach(key => {
-        const f = fams[key];
-        const deviceId = f.deviceId;
-        const device = devs[deviceId];
-        
-        let status: "online" | "offline" | "low_battery" = "offline";
-        let battery = "—";
-        
-        if (device) {
+
+      Object.keys(currentFamilies).forEach(key => {
+        const f = currentFamilies[key] || {};
+        const deviceId = familyDeviceId(f);
+        const device = deviceId ? currentDevices[deviceId] : undefined;
+
+        let status: Family["status"] = "offline";
+        let wearable = "—";
+        let hub = "—";
+
+        if (deviceId) {
           totalDevs++;
-          battery = `${Math.round(device.battery || 0)}%`;
-          
-          if (device.status === 'offline') {
+          const levels = batteryLevels(device);
+          wearable = `${Math.round(levels.wearable)}%`;
+          hub = `${Math.round(levels.hub)}%`;
+
+          if (device?.status === 'offline') {
             status = 'offline';
-          } else if (device.battery < 20) {
+          } else if (Math.min(levels.wearable, levels.hub) < 20) {
             status = 'low_battery';
             onlineCount++;
           } else {
@@ -146,25 +89,98 @@ export function AdminDashboard() {
             onlineCount++;
           }
         }
-        
+
         parsedFamilies.push({
           id: key,
-          name: f.patientName || "Unknown",
+          name: personName(f, device),
           deviceId: deviceId || "Unlinked",
           status,
-          battery,
+          wearableBattery: wearable,
+          hubBattery: hub,
           createdAt: f.createdAt
         });
       });
-      
+
+      // Newest registrations first
+      parsedFamilies.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
+
+      // ---- Recent incidents ----
+      const parsedIncidents: Incident[] = [];
+      let openCount = 0;
+
+      Object.keys(currentEvents).forEach(deviceId => {
+        const deviceEvents = currentEvents[deviceId] || {};
+        const familyEntry = Object.values(currentFamilies).find((f: any) => familyDeviceId(f) === deviceId);
+        const person = familyEntry ? personName(familyEntry, currentDevices[deviceId]) : (currentDevices[deviceId]?.user?.name || deviceId);
+
+        Object.keys(deviceEvents).forEach(eventId => {
+          const ev = deviceEvents[eventId];
+          if (!ev || typeof ev !== 'object') return;
+
+          if (ev.status === 'pending' || ev.status === 'emergency' || ev.status === 'unconfirmed') {
+            openCount++;
+          }
+
+          let typeColor = "bg-primary/15";
+          let typeText = "Event";
+
+          if (ev.status === 'pending' || ev.status === 'unconfirmed') {
+            typeColor = "bg-destructive/15";
+            typeText = "Fall detected (Unconfirmed)";
+          } else if (ev.status === 'emergency') {
+            typeColor = "bg-warning/15";
+            typeText = "SOS Button Pressed";
+          } else if (ev.status === 'confirmed') {
+            typeColor = "bg-destructive/15";
+            typeText = "Fall Confirmed";
+          } else if (ev.status === 'resolved') {
+            typeColor = "bg-success/15";
+            typeText = "Resolved";
+          } else if (ev.status === 'cancelled') {
+            typeColor = "bg-muted";
+            typeText = "Cancelled";
+          }
+
+          // Device writes millis() uptime as timestamp -> use the real time from the Firebase key
+          const when = resolveEventTime(eventId, ev.timestamp);
+
+          parsedIncidents.push({
+            id: `${deviceId}-${eventId}`,
+            type: typeText,
+            person,
+            time: when.toLocaleString(),
+            timestamp: when,
+            statusText: ev.contactNotified ? `Notified: ${ev.contactNotified}` : '',
+            typeColor
+          });
+        });
+      });
+
+      // Newest first, top 5
+      parsedIncidents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
       setFamilies(parsedFamilies);
-      setStats(prev => ({
-        ...prev,
-        totalFamilies: Object.keys(fams).length,
+      setIncidents(parsedIncidents.slice(0, 5));
+      setStats({
+        totalFamilies: Object.keys(currentFamilies).length,
         devicesOnline: onlineCount,
-        totalDevices: totalDevs
-      }));
+        totalDevices: totalDevs,
+        openIncidents: openCount,
+      });
     };
+
+    const unsubscribeFamilies = onValue(ref(db, 'families'), (snapshot) => {
+      currentFamilies = snapshot.val() || {};
+      recompute();
+    });
+    const unsubscribeDevices = onValue(ref(db, 'devices'), (snapshot) => {
+      currentDevices = snapshot.val() || {};
+      recompute();
+    });
+    const unsubscribeEvents = onValue(ref(db, 'events'), (snapshot) => {
+      currentEvents = snapshot.val() || {};
+      recompute();
+    });
 
     return () => {
       unsubscribeFamilies();
@@ -211,19 +227,20 @@ export function AdminDashboard() {
             </Link>
           </div>
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm min-w-[480px]">
+            <table className="w-full text-left text-xs sm:text-sm min-w-[560px]">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Person monitored</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Device Serial</th>
-                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Battery</th>
+                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Wearable Battery</th>
+                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Hub Battery</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {families.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
                       No families registered yet
                     </td>
                   </tr>
@@ -232,7 +249,8 @@ export function AdminDashboard() {
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-foreground font-medium">{family.name}</td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground">{family.battery}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground">{family.wearableBattery}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground">{family.hubBattery}</td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4">
                         <StatusBadge status={family.status} />
                       </td>

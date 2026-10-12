@@ -3,7 +3,7 @@ import { Battery, Watch, Router } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
 
 // Shown until the devices report real values to devices/{deviceId}/batteries/{wearable|hub}
-const DEFAULT_LEVELS = { wearable: 85, hub: 92 };
+export const DEFAULT_LEVELS = { wearable: 85, hub: 92 };
 
 interface BatteryPanelProps {
   deviceId: string;
