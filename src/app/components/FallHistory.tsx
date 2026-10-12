@@ -61,6 +61,8 @@ function formatEventLocation(location: unknown): string {
 export function FallHistory({ deviceId }: FallHistoryProps) {
   const [fallEvents, setFallEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
     const eventsRef = ref(db, `events/${deviceId}`);
@@ -89,7 +91,10 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
                 b.timestamp.getTime() - a.timestamp.getTime()
             );
 
-          setFallEvents(parsedEvents);
+          setFallEvents((prev) => {
+            if (parsedEvents.length > prev.length) setPage(1);
+            return parsedEvents;
+          });
         } else {
           setFallEvents([]);
         }
@@ -122,6 +127,20 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
       </div>
     );
   }
+
+  const totalPages = Math.max(1, Math.ceil(fallEvents.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageEvents = fallEvents.slice(pageStart, pageStart + PAGE_SIZE);
+  const latestId = fallEvents[0]?.id;
+  const now = new Date();
+  const thisMonthCount = fallEvents.filter(
+    (e) =>
+      e.status !== 'cancelled' &&
+      e.timestamp.getMonth() === now.getMonth() &&
+      e.timestamp.getFullYear() === now.getFullYear()
+  ).length;
+  const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-6">
@@ -203,11 +222,7 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
           </div>
 
           <p className="text-3xl font-bold mb-1 text-foreground">
-            {fallEvents.filter(
-              (event) =>
-                event.status !== 'cancelled' &&
-                event.status !== 'emergency'
-            ).length}
+            {fallEvents.filter((event) => event.status !== 'cancelled').length}
           </p>
           <p className="text-sm text-muted-foreground">Total Falls</p>
         </div>
@@ -232,30 +247,37 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
               <AlertTriangle className="size-6 text-destructive" />
             </div>
             <span className="text-xs px-2 py-1 bg-destructive/10 text-destructive rounded-lg font-medium">
-              March 2026
+              {monthLabel}
             </span>
           </div>
 
-          <p className="text-3xl font-bold mb-1 text-foreground">1</p>
+          <p className="text-3xl font-bold mb-1 text-foreground">{thisMonthCount}</p>
           <p className="text-sm text-muted-foreground">This Month</p>
         </div>
       </div>
 
       {/* Timeline */}
       <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <h3 className="text-lg font-semibold mb-6 text-foreground">
-          Event Timeline
-        </h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-foreground">
+            Event Timeline
+          </h3>
+          {fallEvents.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              Newest first • {fallEvents.length} total
+            </span>
+          )}
+        </div>
 
         <div className="space-y-4">
-          {fallEvents.map((event, index) => (
+          {pageEvents.map((event, index) => (
             <div key={event.id} className="relative group">
               {/* Connector line */}
-              {index < fallEvents.length - 1 && (
+              {index < pageEvents.length - 1 && (
                 <div className="absolute left-[22px] top-12 bottom-0 w-px bg-border" />
               )}
 
-              <div className="relative bg-background border border-border rounded-xl p-5 hover:border-primary/30 transition-all duration-200 hover:shadow-sm">
+              <div className={`relative bg-background border rounded-xl p-5 hover:border-primary/30 transition-all duration-200 hover:shadow-sm ${event.id === latestId ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}>
                 <div className="flex items-start gap-4">
                   {/* Status Icon */}
                   <div
@@ -288,8 +310,13 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
                   <div className="flex-1">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <p className="font-semibold mb-1 text-foreground">
+                        <p className="font-semibold mb-1 text-foreground flex items-center gap-2">
                           Fall Detected
+                          {event.id === latestId && (
+                            <span className="px-2 py-0.5 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wide">
+                              Latest
+                            </span>
+                          )}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {event.timestamp.toLocaleString()}
@@ -346,6 +373,43 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
             </div>
           ))}
         </div>
+
+        {fallEvents.length > PAGE_SIZE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 pt-4 border-t border-border">
+            <span className="text-sm text-muted-foreground">
+              Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, fallEvents.length)} of {fallEvents.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPage(n)}
+                  className={`min-w-9 px-3 py-1.5 rounded-lg text-sm border ${
+                    n === currentPage
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-foreground hover:bg-muted'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {fallEvents.length === 0 && (
           <div className="text-center py-16">

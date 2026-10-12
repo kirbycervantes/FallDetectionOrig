@@ -49,7 +49,7 @@ export function CaregiverAnalytics({ deviceId }: CaregiverAnalyticsProps) {
   let validFalls = 0;
   
   incidents.forEach(inc => {
-    if (inc.status !== 'cancelled' && inc.status !== 'emergency') {
+    if (inc.status !== 'cancelled') {
       validFalls++;
       const date = new Date(inc.timestamp);
       fallCountByDay[date.getDay()]++;

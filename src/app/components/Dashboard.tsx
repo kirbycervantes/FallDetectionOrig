@@ -168,7 +168,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
       if (snapshot.exists()) {
         const events = snapshot.val();
         const count = Object.values(events).filter((e: any) => 
-          e.status !== 'cancelled' && e.status !== 'emergency'
+          e.status !== 'cancelled'
         ).length;
         setIncidentsCount(count);
       }
