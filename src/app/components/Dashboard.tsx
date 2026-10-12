@@ -749,7 +749,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
               {/* Stats Overview */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-2.5 bg-success/10 rounded-xl">
@@ -766,19 +766,21 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                     <div className="p-2.5 bg-primary/10 rounded-xl">
                       <Battery className="size-5 text-primary" />
                     </div>
-                    <span className="text-xs text-muted-foreground">{Math.min(batteryLevels.wearable, batteryLevels.hub) > 20 ? 'Good' : 'Low'}</span>
+                    <span className="text-xs text-muted-foreground">{batteryLevels.wearable > 20 ? 'Good' : 'Low'}</span>
                   </div>
-                  <p className="text-muted-foreground text-sm mb-2">Battery</p>
-                  <div className="space-y-1">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-sm text-muted-foreground">Wearable</span>
-                      <span className="text-xl font-semibold text-foreground">{Math.round(batteryLevels.wearable)}%</span>
+                  <p className="text-muted-foreground text-sm mb-1">Wearable Battery</p>
+                  <p className="text-2xl font-semibold text-foreground">{Math.round(batteryLevels.wearable)}%</p>
+                </div>
+                
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2.5 bg-primary/10 rounded-xl">
+                      <Battery className="size-5 text-primary" />
                     </div>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-sm text-muted-foreground">Central Hub</span>
-                      <span className="text-xl font-semibold text-foreground">{Math.round(batteryLevels.hub)}%</span>
-                    </div>
+                    <span className="text-xs text-muted-foreground">{batteryLevels.hub > 20 ? 'Good' : 'Low'}</span>
                   </div>
+                  <p className="text-muted-foreground text-sm mb-1">Central Hub Battery</p>
+                  <p className="text-2xl font-semibold text-foreground">{Math.round(batteryLevels.hub)}%</p>
                 </div>
                 
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
