@@ -3,6 +3,30 @@ import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue, update } from "../../../lib/db";
 import { query, orderByChild } from "firebase/database";
 import { SkeletonTable } from "../ui/skeleton";
+import { familyDeviceId, personName } from "./adminData";
+import { resolveEventTime } from "../../../lib/time";
+
+// The device stores location as { lat, lng } (or latitude/longitude); older data may be plain text.
+function formatLocation(loc: any): { text: string; mapUrl: string | null } {
+  if (loc === undefined || loc === null || loc === '') return { text: "Unknown", mapUrl: null };
+  if (typeof loc === 'string' || typeof loc === 'number') return { text: String(loc), mapUrl: null };
+  if (typeof loc === 'object') {
+    const lat = Number(loc.lat ?? loc.latitude);
+    const lng = Number(loc.lng ?? loc.lon ?? loc.longitude);
+    if (loc.address) return { text: String(loc.address), mapUrl: Number.isFinite(lat) && Number.isFinite(lng) ? `https://www.google.com/maps?q=${lat},${lng}` : null };
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      if (lat === 0 && lng === 0) return { text: "No GPS fix", mapUrl: null };
+      return { text: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, mapUrl: `https://www.google.com/maps?q=${lat},${lng}` };
+    }
+  }
+  return { text: "Unknown", mapUrl: null };
+}
+
+function toText(v: any, fallback: string): string {
+  if (v === undefined || v === null || v === '') return fallback;
+  if (typeof v === 'object') return Object.values(v).filter(x => typeof x === 'string' || typeof x === 'number').join(', ') || fallback;
+  return String(v);
+}
 import { Search, Filter, AlertTriangle, CheckCircle, Clock, X, MapPin } from "lucide-react";
 
 interface Incident {
@@ -15,6 +39,7 @@ interface Incident {
   status: string;
   contactNotified: string;
   location: string;
+  mapUrl: string | null;
   typeColor: string;
   icon: any;
 }
@@ -38,11 +63,13 @@ export function AdminIncidents() {
       
       Object.keys(currentEvents).forEach(deviceId => {
         const deviceEvents = currentEvents[deviceId];
-        const family = Object.values(currentFamilies).find((f: any) => f.deviceId === deviceId) as any;
-        const patientName = family ? family.patientName : "Unknown Patient";
+        if (!deviceEvents || typeof deviceEvents !== 'object') return;
+        const family = Object.values(currentFamilies).find((f: any) => familyDeviceId(f) === deviceId) as any;
+        const patientName = family ? personName(family) : "Unassigned device";
         
         Object.keys(deviceEvents).forEach(eventId => {
           const ev = deviceEvents[eventId];
+          if (!ev || typeof ev !== 'object') return;
           
           let typeColor = "bg-primary/10 text-primary";
           let typeText = "Event";
@@ -70,16 +97,21 @@ export function AdminIncidents() {
             icon = <AlertTriangle className="size-4" />;
           }
 
+          // Device writes millis() uptime as timestamp -> real time comes from the Firebase key
+          const when = resolveEventTime(eventId, ev.timestamp);
+          const loc = formatLocation(ev.location);
+
           parsedIncidents.push({
             id: eventId,
             deviceId,
             patientName,
             type: typeText,
-            time: new Date(ev.timestamp).toLocaleString(),
-            timestamp: new Date(ev.timestamp),
+            time: when.toLocaleString(),
+            timestamp: when,
             status: ev.status,
-            contactNotified: ev.contactNotified || "None",
-            location: ev.location || "Unknown",
+            contactNotified: toText(ev.contactNotified, "None"),
+            location: loc.text,
+            mapUrl: loc.mapUrl,
             typeColor,
             icon
           });
@@ -93,14 +125,14 @@ export function AdminIncidents() {
     };
 
     const unsubEvents = onValue(eventsRef, (snapshot) => {
-      if (snapshot.exists()) currentEvents = snapshot.val();
+      currentEvents = snapshot.val() || {};
       updateIncidentsList();
-    });
+    }, (err) => { console.error('Failed to load events', err); setLoading(false); });
 
     const unsubFamilies = onValue(familiesRef, (snapshot) => {
-      if (snapshot.exists()) currentFamilies = snapshot.val();
+      currentFamilies = snapshot.val() || {};
       updateIncidentsList();
-    });
+    }, (err) => { console.error('Failed to load families', err); });
 
     return () => {
       unsubEvents();
@@ -181,7 +213,7 @@ export function AdminIncidents() {
                   </tr>
                 ) : (
                   filteredIncidents.map((incident) => (
-                    <tr key={incident.id} className="hover:bg-muted/50 transition-colors">
+                    <tr key={`${incident.deviceId}-${incident.id}`} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-lg ${incident.typeColor} font-medium text-xs`}>
                           {incident.icon}
@@ -196,7 +228,9 @@ export function AdminIncidents() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground text-xs truncate max-w-[200px]" title={incident.location}>
-                        {incident.location}
+                        {incident.mapUrl ? (
+                          <a href={incident.mapUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{incident.location}</a>
+                        ) : incident.location}
                       </td>
                       <td className="px-6 py-4 text-foreground text-xs">
                         {incident.contactNotified}
@@ -269,6 +303,9 @@ export function AdminIncidents() {
                   <div>
                     <p className="text-xs text-muted-foreground font-medium mb-0.5">Location</p>
                     <p className="text-sm text-foreground">{selectedIncident.location}</p>
+                    {selectedIncident.mapUrl && (
+                      <a href={selectedIncident.mapUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Open in Google Maps</a>
+                    )}
                   </div>
                 </div>
               </div>
