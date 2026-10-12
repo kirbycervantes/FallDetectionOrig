@@ -4,24 +4,7 @@ import { StatusBadge } from "./StatusBadge";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { resolveEventTime } from "../../../lib/time";
-import { DEFAULT_LEVELS } from "../BatteryPanel";
-
-function familyDeviceId(f: any): string | undefined {
-  return f?.deviceId || f?.deviceSerialNumber || undefined;
-}
-
-function personName(f: any, device?: any): string {
-  return f?.monitoredPerson?.name || f?.monitoredPersonName || f?.patientName || device?.user?.name || "Unknown";
-}
-
-// Same source as the caregiver dashboard: devices/{id}/batteries, static defaults until real values arrive
-function batteryLevels(device: any) {
-  const b = device?.batteries || {};
-  return {
-    wearable: typeof b.wearable === 'number' ? b.wearable : DEFAULT_LEVELS.wearable,
-    hub: typeof b.hub === 'number' ? b.hub : DEFAULT_LEVELS.hub,
-  };
-}
+import { familyDeviceId, personName, batteryLevels, deviceState } from "./adminData";
 
 interface Family {
   id: string;
@@ -61,8 +44,8 @@ export function AdminDashboard() {
     const recompute = () => {
       // ---- Registered families ----
       const parsedFamilies: Family[] = [];
+      const seenDevices = new Set<string>();
       let onlineCount = 0;
-      let totalDevs = 0;
 
       Object.keys(currentFamilies).forEach(key => {
         const f = currentFamilies[key] || {};
@@ -74,19 +57,14 @@ export function AdminDashboard() {
         let hub = "—";
 
         if (deviceId) {
-          totalDevs++;
           const levels = batteryLevels(device);
           wearable = `${Math.round(levels.wearable)}%`;
           hub = `${Math.round(levels.hub)}%`;
-
-          if (device?.status === 'offline') {
-            status = 'offline';
-          } else if (Math.min(levels.wearable, levels.hub) < 20) {
-            status = 'low_battery';
-            onlineCount++;
-          } else {
-            status = 'online';
-            onlineCount++;
+          status = deviceState(device);
+          // count each physical device once, even if linked to several families
+          if (!seenDevices.has(deviceId)) {
+            seenDevices.add(deviceId);
+            if (status !== 'offline') onlineCount++;
           }
         }
 
@@ -164,7 +142,7 @@ export function AdminDashboard() {
       setStats({
         totalFamilies: Object.keys(currentFamilies).length,
         devicesOnline: onlineCount,
-        totalDevices: totalDevs,
+        totalDevices: seenDevices.size,
         openIncidents: openCount,
       });
     };
