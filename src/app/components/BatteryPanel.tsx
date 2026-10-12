@@ -15,7 +15,8 @@ function levelColor(level: number) {
   return { text: 'text-destructive', bg: 'bg-destructive', soft: 'bg-destructive/10' };
 }
 
-export function BatteryPanel({ deviceId }: BatteryPanelProps) {
+/** Wearable + Central Hub battery levels (static defaults until the devices report real values). */
+export function useBatteryLevels(deviceId: string | null) {
   const [levels, setLevels] = useState(DEFAULT_LEVELS);
 
   useEffect(() => {
@@ -29,6 +30,12 @@ export function BatteryPanel({ deviceId }: BatteryPanelProps) {
     });
     return () => unsub();
   }, [deviceId]);
+
+  return levels;
+}
+
+export function BatteryPanel({ deviceId }: BatteryPanelProps) {
+  const levels = useBatteryLevels(deviceId);
 
   const items = [
     { name: 'Wearable', icon: Watch, level: levels.wearable },

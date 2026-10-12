@@ -16,6 +16,7 @@ import { EmergencyContacts } from './EmergencyContacts';
 import { JoinRequests } from './JoinRequests';
 import { CaregiverSchedule } from './CaregiverSchedule';
 import { CaregiverAnalytics } from './CaregiverAnalytics';
+import { useBatteryLevels } from './BatteryPanel';
 import { UserSettings } from './UserSettings';
 import { SkeletonPage } from './ui/skeleton';
 import { db, ref, onValue, update, push, set } from '../../lib/db';
@@ -66,6 +67,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [patientName, setPatientName] = useState<string>('');
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const batteryLevels = useBatteryLevels(deviceId);
   const [loadingContext, setLoadingContext] = useState(true);
   
 
@@ -764,10 +766,19 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                     <div className="p-2.5 bg-primary/10 rounded-xl">
                       <Battery className="size-5 text-primary" />
                     </div>
-                    <span className="text-xs text-muted-foreground">Good</span>
+                    <span className="text-xs text-muted-foreground">{Math.min(batteryLevels.wearable, batteryLevels.hub) > 20 ? 'Good' : 'Low'}</span>
                   </div>
-                  <p className="text-muted-foreground text-sm mb-1">Battery</p>
-                  <p className="text-2xl font-semibold text-foreground">{Math.round(deviceData.battery)}%</p>
+                  <p className="text-muted-foreground text-sm mb-2">Battery</p>
+                  <div className="space-y-1">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm text-muted-foreground">Wearable</span>
+                      <span className="text-xl font-semibold text-foreground">{Math.round(batteryLevels.wearable)}%</span>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm text-muted-foreground">Central Hub</span>
+                      <span className="text-xl font-semibold text-foreground">{Math.round(batteryLevels.hub)}%</span>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
