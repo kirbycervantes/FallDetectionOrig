@@ -13,6 +13,7 @@ import {
   Phone,
   Download
 } from 'lucide-react';
+import { resolveEventTime } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
 import { query, orderByChild } from 'firebase/database';
 import { SkeletonList } from './ui/skeleton';
@@ -76,7 +77,7 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
 
               return {
                 id: key,
-                timestamp: new Date(eventData.timestamp),
+                timestamp: resolveEventTime(key, eventData.timestamp),
                 status: eventData.status || 'pending',
                 location: eventData.location ?? null,
                 responseTime: eventData.responseTime,

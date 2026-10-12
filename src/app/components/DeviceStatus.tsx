@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Battery, Wifi, Radio, Activity, Clock, MapPin, Cpu, Signal, Zap } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonCard } from './ui/skeleton';
+import { BatteryPanel } from './BatteryPanel';
+import { validDate } from '../../lib/time';
 
 interface DeviceStatusProps {
   deviceId: string;
@@ -66,7 +68,7 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
           <div className="flex items-center gap-2 pt-4 border-t border-border">
             <Clock className="size-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
-              Last seen: {new Date(deviceData.lastUpdate).toLocaleTimeString()}
+              Last seen: {validDate(deviceData.lastUpdate)?.toLocaleString() ?? 'Just now'}
             </span>
           </div>
           
@@ -86,45 +88,8 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
           </div>
         </div>
         
-        {/* Battery Status */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Battery Level</p>
-              <p className="text-3xl font-bold text-foreground">{Math.round(deviceData.battery)}%</p>
-            </div>
-            <div className={`p-3 rounded-xl ${
-              batteryColor === 'emerald' ? 'bg-success/10 text-success' :
-              batteryColor === 'amber' ? 'bg-warning/10 text-warning' :
-              'bg-destructive/10 text-destructive'
-            }`}>
-              <Battery className="size-8" />
-            </div>
-          </div>
-          
-          {/* Battery Bar */}
-          <div className="relative w-full h-3 bg-muted rounded-full overflow-hidden">
-            <div 
-              className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
-                batteryColor === 'emerald' ? 'bg-success' :
-                batteryColor === 'amber' ? 'bg-warning' :
-                'bg-destructive'
-              }`}
-              style={{ width: `${deviceData.battery}%` }}
-            ></div>
-          </div>
-          
-          <div className="mt-4 flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Estimated Runtime</span>
-            <span className={`font-medium ${
-              batteryColor === 'emerald' ? 'text-success' :
-              batteryColor === 'amber' ? 'text-warning' :
-              'text-destructive'
-            }`}>
-              {Math.round(deviceData.battery / 10)} hours
-            </span>
-          </div>
-        </div>
+        {/* Battery Status: Wearable + Central Hub */}
+        <BatteryPanel deviceId={deviceId} />
       </div>
       
       {/* Technical Information Grid */}

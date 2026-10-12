@@ -17,11 +17,7 @@ interface EmergencyContactsProps {
 }
 
 // Default emergency contacts available for all users
-const DEFAULT_EMERGENCY_CONTACTS: Omit<Contact, 'id'>[] = [
-  { name: 'Emergency Services', relationship: 'Emergency', phone: '911', email: '', isDefault: true },
-  { name: 'Red Cross', relationship: 'Emergency', phone: '143', email: '', isDefault: true },
-  { name: 'PNP Hotline', relationship: 'Emergency', phone: '117', email: '', isDefault: true },
-];
+const DEFAULT_EMERGENCY_CONTACTS: Omit<Contact, 'id'>[] = [];
 
 export function EmergencyContacts({ familyId }: EmergencyContactsProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -85,7 +81,7 @@ export function EmergencyContacts({ familyId }: EmergencyContactsProps) {
     id: `default-${i}`,
   }));
 
-  const allContacts = [...contacts, ...defaultContacts];
+  const allContacts = [...contacts];
 
   const getAvatarColor = (index: number) => {
     const colors = ['bg-primary', 'bg-warning', 'bg-success', 'bg-secondary'];
@@ -232,32 +228,6 @@ export function EmergencyContacts({ familyId }: EmergencyContactsProps) {
           </button>
         </div>
       )}
-      
-      {/* Default Emergency Services — always shown */}
-      <div className="bg-card border border-destructive/20 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-destructive/10 rounded-lg">
-            <AlertCircle className="size-5 text-destructive" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-destructive">Default Emergency Services</h3>
-            <p className="text-xs text-muted-foreground">These numbers are automatically included for all users and cannot be removed</p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {DEFAULT_EMERGENCY_CONTACTS.map((service, index) => (
-            <a 
-              key={index} 
-              href={`tel:${service.phone}`}
-              className="block p-4 bg-destructive/5 border border-destructive/20 rounded-xl text-center hover:bg-destructive/10 transition"
-            >
-              <p className="text-xs text-destructive mb-1">{service.name}</p>
-              <p className="text-xl font-bold text-destructive">{service.phone}</p>
-            </a>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { validDate } from '../../lib/time';
 import { useState, useEffect } from 'react';
 import { MapPin, Navigation, ExternalLink, Radio, History } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
@@ -68,7 +69,7 @@ export function LocationMap({ deviceId }: LocationMapProps) {
               <h2 className="text-xl font-semibold text-foreground">Live Tracking</h2>
               <p className="text-sm text-muted-foreground flex items-center gap-2">
                 <Radio className="size-3 text-emerald-500 animate-pulse" />
-                GPS Active • Last update: {lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : 'Unknown'}
+                GPS Active • Last update: {validDate(lastUpdate)?.toLocaleTimeString() ?? 'Just now'}
               </p>
             </div>
           </div>

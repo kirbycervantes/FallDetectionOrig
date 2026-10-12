@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue } from "../../lib/db";
+import { resolveEventTime } from "../../lib/time";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 import { SkeletonChart } from './ui/skeleton';
 import { Activity, Battery, AlertTriangle, TrendingDown } from "lucide-react";
@@ -18,7 +19,7 @@ export function CaregiverAnalytics({ deviceId }: CaregiverAnalyticsProps) {
     const unsub = onValue(eventsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setIncidents(Object.values(data));
+        setIncidents(Object.entries(data).map(([key, v]: [string, any]) => ({ ...v, timestamp: resolveEventTime(key, v?.timestamp).getTime() })));
       } else {
         setIncidents([]);
       }

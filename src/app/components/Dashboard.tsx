@@ -16,7 +16,7 @@ import { EmergencyContacts } from './EmergencyContacts';
 import { JoinRequests } from './JoinRequests';
 import { CaregiverSchedule } from './CaregiverSchedule';
 import { CaregiverAnalytics } from './CaregiverAnalytics';
-import { DeviceAudio } from './DeviceAudio';
+import { UserSettings } from './UserSettings';
 import { SkeletonPage } from './ui/skeleton';
 import { db, ref, onValue, update, push, set } from '../../lib/db';
 import { get } from 'firebase/database';
@@ -64,6 +64,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
   const [incidentOffset, setIncidentOffset] = useState(0);
   
   const [familyId, setFamilyId] = useState<string | null>(null);
+  const [patientName, setPatientName] = useState<string>('');
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
   
@@ -98,6 +99,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
           setDeviceId(resolvedDeviceId);
         }
         setIncidentOffset(famData?.incidentOffset || 0);
+          setPatientName(famData?.monitoredPerson?.name || famData?.monitoredPersonName || famData?.patientName || '');
         setLoadingContext(false);
       });
       return () => unsubFam();
@@ -118,6 +120,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             setDeviceId(resolvedDeviceId);
           }
           setIncidentOffset(famData?.incidentOffset || 0);
+          setPatientName(famData?.monitoredPerson?.name || famData?.monitoredPersonName || famData?.patientName || '');
           setLoadingContext(false);
         }, (error) => {
           console.error("Error fetching family:", error);
@@ -291,8 +294,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
   };
 
   // Determine proactive warnings
-  const isOffline = deviceData.lastUpdate ? (Date.now() - new Date(deviceData.lastUpdate).getTime() > 15 * 60 * 1000) : false;
-  const isLowBattery = deviceData.battery < 15;
+    const isLowBattery = typeof deviceData.battery === 'number' && deviceData.battery > 0 && deviceData.battery < 15;
 
 
   
@@ -558,7 +560,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             </div>
             <div>
               <h1 className="text-lg font-semibold tracking-tight text-foreground">CareBeacon</h1>
-              <p className="text-xs text-muted-foreground">{deviceData.user?.name || fallbackDeviceData.user.name}, {deviceData.user?.age || fallbackDeviceData.user.age}</p>
+              <p className="text-xs text-muted-foreground">{patientName || deviceData.user?.name || 'Patient'}{deviceData.user?.age ? `, ${deviceData.user.age}` : ''}</p>
             </div>
           </div>
           
@@ -684,19 +686,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                   </button>
                 </li>
                 <li>
-                <button
-                            onClick={() => setActiveTab('audio')}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              activeTab === 'audio'
-                                ? 'bg-secondary text-primary'
-                                : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                            }`}
-                          >
-                            <MessageSquare className="size-4" />
-                            SMS Alerts
-                          </button>
-                </li>
-                <li>
                   <button
                     onClick={() => setActiveTab('schedule')}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -742,19 +731,13 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
               </h2>
               <div className="flex items-center gap-4">
                 <span className="text-sm text-muted-foreground hidden sm:inline-block">
-                  Monitoring {deviceData.user?.name || 'Unknown User'}
+                  Monitoring {patientName || deviceData.user?.name || 'your loved one'}
                 </span>
               </div>
             </header>
 
             {/* Proactive Warnings */}
-            {!hasAlert && isOffline && (
-              <div className="bg-amber-500 text-amber-950 px-4 py-3 flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
-                <AlertOctagon className="size-5" />
-                <p className="text-sm font-medium">Device is offline. It hasn't connected in over 15 minutes.</p>
-              </div>
-            )}
-            {!hasAlert && !isOffline && isLowBattery && (
+            {!hasAlert && isLowBattery && (
               <div className="bg-red-500 text-white px-4 py-3 flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
                 <Battery className="size-5" />
                 <p className="text-sm font-medium">Device battery is critically low ({Math.round(deviceData.battery)}%). Please charge immediately.</p>
@@ -813,7 +796,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
               {activeTab === 'history' && <FallHistory deviceId={deviceId!} />}
               {activeTab === 'analytics' && <CaregiverAnalytics deviceId={deviceId!} />}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
-              {activeTab === 'audio' && <DeviceAudio deviceId={deviceId!} />}
               {activeTab === 'schedule' && <CaregiverSchedule familyId={familyId!} />}
               {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} />}
               {activeTab === 'join_requests' && <JoinRequests familyId={familyId!} />}
