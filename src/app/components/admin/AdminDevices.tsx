@@ -3,13 +3,16 @@ import { AdminLayout } from "./AdminLayout";
 import { StatusBadge } from "./StatusBadge";
 import { db, ref, onValue, set } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
+import { familyDeviceId, personName, batteryLevels, deviceState, flattenEvents } from "./adminData";
+import { validDate } from "../../../lib/time";
 import { Search, Filter, Battery, Wifi, WifiOff, X, Activity, HardDrive, Cpu, Radio, Plus, PackagePlus, Check, AlertCircle } from "lucide-react";
 
 interface Device {
   id: string;
   status: "online" | "offline" | "low_battery";
-  battery: number;
-  lastUpdate: string;
+  wearableBattery: number;
+  hubBattery: number;
+  lastUpdate: Date | null;
   familyId: string | null;
   patientName: string | null;
 }
@@ -31,63 +34,75 @@ export function AdminDevices() {
   const [provisionSuccess, setProvisionSuccess] = useState(false);
 
   useEffect(() => {
-    const devicesRef = ref(db, 'devices');
-    const familiesRef = ref(db, 'families');
-    
     let currentDevices: any = {};
     let currentFamilies: any = {};
-    
+    let currentEvents: any = {};
+    const loaded = { devices: false, families: false };
+
     const updateDevicesList = () => {
+      // Latest event per device (real time from the Firebase key)
+      const lastEvent: Record<string, number> = {};
+      flattenEvents(currentEvents).forEach(ev => {
+        const t = ev.date.getTime();
+        if (!lastEvent[ev.deviceId] || t > lastEvent[ev.deviceId]) lastEvent[ev.deviceId] = t;
+      });
+
+      // Every device in /devices plus any device linked to a family but not yet in /devices
+      const ids = new Set<string>(Object.keys(currentDevices));
+      Object.values(currentFamilies).forEach((f: any) => {
+        const id = familyDeviceId(f);
+        if (id) ids.add(id);
+      });
+
       const parsedDevices: Device[] = [];
-      
-      Object.keys(currentDevices).forEach(deviceId => {
-        const d = currentDevices[deviceId];
-        
-        // Find which family this belongs to
-        const familyEntry = Object.entries(currentFamilies).find(([_, f]: [string, any]) => 
-          (f.deviceId || f.deviceSerialNumber) === deviceId
-        );
+      ids.forEach(deviceId => {
+        const d = currentDevices[deviceId] || {};
+
+        const familyEntry = Object.entries(currentFamilies).find(([, f]: [string, any]) => familyDeviceId(f) === deviceId);
         const familyId = familyEntry ? familyEntry[0] : null;
-        const fData = familyEntry ? familyEntry[1] as any : null;
-        const patientName = fData ? (fData.patientName || fData.monitoredPerson?.name) : null;
-        
-        let status: "online" | "offline" | "low_battery" = "offline";
-        
-        if (d.status === 'offline') {
-          status = 'offline';
-        } else if (d.battery < 20) {
-          status = 'low_battery';
-        } else {
-          status = 'online';
-        }
-        
+        const fData = familyEntry ? (familyEntry[1] as any) : null;
+        const name = fData ? personName(fData, d) : (d.user?.name || null);
+
+        const levels = batteryLevels(d);
+
+        // Last sync: device's lastUpdate if it is a real date, otherwise its latest event
+        const reported = validDate(d.lastUpdate)?.getTime() ?? 0;
+        const latest = Math.max(reported, lastEvent[deviceId] ?? 0);
+
         parsedDevices.push({
           id: deviceId,
-          status,
-          battery: Math.round(d.battery || 0),
-          lastUpdate: d.lastUpdate || new Date().toISOString(),
+          status: deviceState(d),
+          wearableBattery: Math.round(levels.wearable),
+          hubBattery: Math.round(levels.hub),
+          lastUpdate: latest ? new Date(latest) : null,
           familyId,
-          patientName
+          patientName: name === "Unknown" ? null : name,
         });
       });
-      
+
+      // Assigned devices first, then by serial
+      parsedDevices.sort((a, b) => Number(!!b.familyId) - Number(!!a.familyId) || a.id.localeCompare(b.id));
+
       setDevices(parsedDevices);
-      setLoading(false);
+      // keep the open Diagnostics window in sync too
+      setSelectedDevice(prev => prev ? (parsedDevices.find(x => x.id === prev.id) ?? prev) : prev);
+      if (loaded.devices && loaded.families) setLoading(false);
     };
 
-    const unsubDevices = onValue(devicesRef, (snapshot) => {
-      if (snapshot.exists()) currentDevices = snapshot.val();
-      updateDevicesList();
+    const unsubDevices = onValue(ref(db, 'devices'), (snapshot) => {
+      currentDevices = snapshot.val() || {}; loaded.devices = true; updateDevicesList();
     });
-
-    const unsubFamilies = onValue(familiesRef, (snapshot) => {
-      if (snapshot.exists()) currentFamilies = snapshot.val();
-      updateDevicesList();
+    const unsubFamilies = onValue(ref(db, 'families'), (snapshot) => {
+      currentFamilies = snapshot.val() || {}; loaded.families = true; updateDevicesList();
+    });
+    const unsubEvents = onValue(ref(db, 'events'), (snapshot) => {
+      currentEvents = snapshot.val() || {}; updateDevicesList();
     });
 
     return () => {
       unsubDevices();
       unsubFamilies();
+      unsubEvents();
     };
   }, []);
 
@@ -220,7 +235,7 @@ export function AdminDevices() {
                 <tr>
                   <th className="font-medium px-6 py-4">Serial Number</th>
                   <th className="font-medium px-6 py-4">Status</th>
-                  <th className="font-medium px-6 py-4">Battery</th>
+                  <th className="font-medium px-6 py-4">Batteries</th>
                   <th className="font-medium px-6 py-4">Assigned To</th>
                   <th className="font-medium px-6 py-4">Last Sync</th>
                   <th className="font-medium px-6 py-4 text-right">Actions</th>
@@ -240,9 +255,15 @@ export function AdminDevices() {
                       <td className="px-6 py-4">
                         <StatusBadge status={device.status} />
                       </td>
-                      <td className="px-6 py-4 text-foreground flex items-center gap-2">
-                        {device.battery}%
-                        {device.battery < 20 && <Battery className="size-3 text-destructive" />}
+                      <td className="px-6 py-4 text-foreground text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground w-16">Wearable</span>
+                          <span className={device.wearableBattery < 20 ? "text-destructive font-medium" : ""}>{device.wearableBattery}%</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-muted-foreground w-16">Hub</span>
+                          <span className={device.hubBattery < 20 ? "text-destructive font-medium" : ""}>{device.hubBattery}%</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         {device.patientName ? (
@@ -252,7 +273,7 @@ export function AdminDevices() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-muted-foreground text-xs">
-                        {new Date(device.lastUpdate).toLocaleString()}
+                        {device.lastUpdate ? device.lastUpdate.toLocaleString() : "No data yet"}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button 
@@ -301,10 +322,14 @@ export function AdminDevices() {
                   <div><StatusBadge status={selectedDevice.status} /></div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Battery Level</p>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Battery Levels</p>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                    {selectedDevice.battery}%
-                    {selectedDevice.battery < 20 ? <Battery className="size-4 text-destructive" /> : <Battery className="size-4 text-success" />}
+                    <Battery className={`size-4 ${selectedDevice.wearableBattery < 20 ? "text-destructive" : "text-success"}`} />
+                    Wearable {selectedDevice.wearableBattery}%
+                  </p>
+                  <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Battery className={`size-4 ${selectedDevice.hubBattery < 20 ? "text-destructive" : "text-success"}`} />
+                    Hub {selectedDevice.hubBattery}%
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -313,7 +338,7 @@ export function AdminDevices() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Last Sync</p>
-                  <p className="text-sm text-foreground">{new Date(selectedDevice.lastUpdate).toLocaleString()}</p>
+                  <p className="text-sm text-foreground">{selectedDevice.lastUpdate ? selectedDevice.lastUpdate.toLocaleString() : "No data yet"}</p>
                 </div>
               </div>
 
