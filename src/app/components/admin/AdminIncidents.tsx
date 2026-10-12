@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "./AdminLayout";
-import { db, ref, onValue, update } from "../../../lib/db";
+import { db, ref, onValue, update, remove } from "../../../lib/db";
 import { query, orderByChild } from "firebase/database";
 import { SkeletonTable } from "../ui/skeleton";
 import { familyDeviceId, personName } from "./adminData";
@@ -27,7 +27,7 @@ function toText(v: any, fallback: string): string {
   if (typeof v === 'object') return Object.values(v).filter(x => typeof x === 'string' || typeof x === 'number').join(', ') || fallback;
   return String(v);
 }
-import { Search, Filter, AlertTriangle, CheckCircle, Clock, X, MapPin } from "lucide-react";
+import { Search, Filter, AlertTriangle, CheckCircle, Clock, X, MapPin, Trash2 } from "lucide-react";
 
 interface Incident {
   id: string;
@@ -50,6 +50,12 @@ export function AdminIncidents() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+  const tableTopRef = useRef<HTMLDivElement | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     const eventsRef = ref(db, 'events');
@@ -148,6 +154,49 @@ export function AdminIncidents() {
     return matchesSearch && matchesStatus;
   });
 
+  // ---- Pagination: 10 per page, newest first ----
+  useEffect(() => { setPage(1); }, [search, filterStatus]);
+  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageIncidents = filteredIncidents.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // Show at most 5 page numbers around the current page
+  const firstNum = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+  const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, i) => firstNum + i);
+
+  const goToPage = (n: number) => {
+    setPage(Math.max(1, Math.min(totalPages, n)));
+    tableTopRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+
+  const openDetails = (incident: Incident) => {
+    setConfirmDelete(false);
+    setDeleteError("");
+    setSelectedIncident(incident);
+  };
+
+  const closeDetails = () => {
+    setConfirmDelete(false);
+    setDeleteError("");
+    setSelectedIncident(null);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedIncident) return;
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await remove(ref(db, `events/${selectedIncident.deviceId}/${selectedIncident.id}`));
+      closeDetails();
+    } catch (err: any) {
+      setDeleteError(err?.message || "Failed to delete this record.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -191,7 +240,7 @@ export function AdminIncidents() {
         {loading ? (
           <SkeletonTable rows={5} />
         ) : (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div ref={tableTopRef} className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden scroll-mt-4">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="text-muted-foreground bg-muted/30">
@@ -212,7 +261,7 @@ export function AdminIncidents() {
                     </td>
                   </tr>
                 ) : (
-                  filteredIncidents.map((incident) => (
+                  pageIncidents.map((incident) => (
                     <tr key={`${incident.deviceId}-${incident.id}`} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-lg ${incident.typeColor} font-medium text-xs`}>
@@ -237,7 +286,7 @@ export function AdminIncidents() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button 
-                          onClick={() => setSelectedIncident(incident)}
+                          onClick={() => openDetails(incident)}
                           className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
                         >
                           Details
@@ -249,6 +298,45 @@ export function AdminIncidents() {
               </tbody>
             </table>
           </div>
+
+          {filteredIncidents.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-border">
+              <span className="text-sm text-muted-foreground">
+                Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filteredIncidents.length)} of {filteredIncidents.length} • Newest first
+              </span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  {pageNumbers.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => goToPage(n)}
+                      className={`min-w-9 px-3 py-1.5 rounded-lg text-sm border ${
+                        n === currentPage
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         )}
       </div>
@@ -268,7 +356,7 @@ export function AdminIncidents() {
                 </div>
               </div>
               <button 
-                onClick={() => setSelectedIncident(null)}
+                onClick={closeDetails}
                 className="p-2 hover:bg-muted text-muted-foreground rounded-xl transition-colors"
               >
                 <X className="size-5" />
@@ -327,9 +415,24 @@ export function AdminIncidents() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-border bg-muted/10 flex justify-end">
+            {deleteError && (
+              <p className="px-6 pb-2 text-xs text-destructive">{deleteError}</p>
+            )}
+            <div className="p-4 border-t border-border bg-muted/10 flex items-center justify-between gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 ${
+                  confirmDelete
+                    ? 'bg-destructive text-white hover:bg-destructive/90'
+                    : 'text-destructive hover:bg-destructive/10'
+                }`}
+              >
+                <Trash2 className="size-4" />
+                {deleting ? 'Deleting…' : confirmDelete ? 'Click again to delete permanently' : 'Delete record'}
+              </button>
               <button 
-                onClick={() => setSelectedIncident(null)}
+                onClick={closeDetails}
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-sm font-medium transition-colors"
               >
                 Close
