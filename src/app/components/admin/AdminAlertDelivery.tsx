@@ -17,8 +17,8 @@ interface AlertDelivery {
   eventType: string;
   contactName: string;
   contactPhone: string;
-  method: Method;
-  status: DeliveryStatus;
+  sms: DeliveryStatus | null;
+  call: DeliveryStatus | null;
 }
 
 interface Recipient { name: string; phone: string; }
@@ -62,12 +62,29 @@ function normalizeStatus(s: any): DeliveryStatus {
   return 'Sent';
 }
 
+// One compact badge per channel, coloured by its delivery status
+function ChannelBadge({ label, icon, status }: { label: string; icon: React.ReactNode; status: DeliveryStatus }) {
+  const style =
+    status === 'Failed' ? 'bg-destructive/10 text-destructive border-destructive/20'
+    : status === 'Pending' ? 'bg-warning/10 text-warning border-warning/20'
+    : 'bg-success/10 text-success border-success/20';
+  const StatusIcon = status === 'Failed' ? XCircle : status === 'Pending' ? Clock : status === 'Delivered' ? CheckCircle2 : Send;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${style}`} title={`${label}: ${status}`}>
+      {icon}
+      {label}
+      <span className="opacity-60">·</span>
+      <StatusIcon className="size-3.5" />
+      {status}
+    </span>
+  );
+}
+
 export function AdminAlertDelivery() {
   const [deliveries, setDeliveries] = useState<AlertDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterMethod, setFilterMethod] = useState("all");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const tableTopRef = useRef<HTMLDivElement | null>(null);
@@ -89,27 +106,37 @@ export function AdminAlertDelivery() {
         const eventType = eventLabel(ev.status);
         const raw = ev.raw;
 
-        // 1) Real receipts written by the hub (events/{deviceId}/{eventId}/receipts)
+        // 1) Real receipts written by the hub (events/{deviceId}/{eventId}/receipts) -> grouped per contact
         const receipts = raw.receipts ? (Array.isArray(raw.receipts) ? raw.receipts : Object.values(raw.receipts)) : [];
         if (receipts.length) {
-          receipts.forEach((r: any, idx: number) => {
+          const byContact = new Map<string, AlertDelivery>();
+          receipts.forEach((r: any) => {
             if (!r || typeof r !== 'object') return;
-            parsed.push({
-              id: `${ev.deviceId}_${ev.eventId}_r${idx}`,
-              timestamp: r.timestamp ? resolveEventTime(ev.eventId, r.timestamp) : ev.date,
-              patientName,
-              deviceId: ev.deviceId,
-              eventType,
-              contactName: r.contactName || 'Registered contact',
-              contactPhone: maskPhone(r.phone),
-              method: normalizeMethod(r.method),
-              status: normalizeStatus(r.status),
-            });
+            const name = r.contactName || 'Registered contact';
+            const key = `${name}|${r.phone ?? ''}`;
+            let row = byContact.get(key);
+            if (!row) {
+              row = {
+                id: `${ev.deviceId}_${ev.eventId}_${byContact.size}`,
+                timestamp: r.timestamp ? resolveEventTime(ev.eventId, r.timestamp) : ev.date,
+                patientName,
+                deviceId: ev.deviceId,
+                eventType,
+                contactName: name,
+                contactPhone: maskPhone(r.phone),
+                sms: null,
+                call: null,
+              };
+              byContact.set(key, row);
+            }
+            if (normalizeMethod(r.method) === 'Call') row.call = normalizeStatus(r.status);
+            else row.sms = normalizeStatus(r.status);
           });
+          parsed.push(...byContact.values());
           return;
         }
 
-        // 2) Otherwise: the hub sends one SMS and one call to each registered number for every alert
+        // 2) Otherwise: the hub sends an SMS and places a call to each registered number for every alert
         let recipients = family ? familyRecipients(family) : [];
         if (!recipients.length) {
           const fallbackName = typeof raw.contactNotified === 'string' && !raw.contactNotified.startsWith('None')
@@ -118,18 +145,16 @@ export function AdminAlertDelivery() {
         }
 
         recipients.forEach((rcp, idx) => {
-          (['SMS', 'Call'] as Method[]).forEach(method => {
-            parsed.push({
-              id: `${ev.deviceId}_${ev.eventId}_${idx}_${method}`,
-              timestamp: ev.date,
-              patientName,
-              deviceId: ev.deviceId,
-              eventType,
-              contactName: rcp.name,
-              contactPhone: maskPhone(rcp.phone),
-              method,
-              status: 'Sent',
-            });
+          parsed.push({
+            id: `${ev.deviceId}_${ev.eventId}_${idx}`,
+            timestamp: ev.date,
+            patientName,
+            deviceId: ev.deviceId,
+            eventType,
+            contactName: rcp.name,
+            contactPhone: maskPhone(rcp.phone),
+            sms: 'Sent',
+            call: 'Sent',
           });
         });
       });
@@ -158,19 +183,19 @@ export function AdminAlertDelivery() {
     const matchesSearch = d.patientName.toLowerCase().includes(q) ||
                           d.contactName.toLowerCase().includes(q) ||
                           d.deviceId.toLowerCase().includes(q);
-    const matchesStatus = filterStatus === "all" || d.status === filterStatus;
-    const matchesMethod = filterMethod === "all" || d.method === filterMethod;
-    return matchesSearch && matchesStatus && matchesMethod;
+    const matchesStatus = filterStatus === "all" || d.sms === filterStatus || d.call === filterStatus;
+    return matchesSearch && matchesStatus;
   });
 
   // Summary
-  const smsCount = deliveries.filter(d => d.method === 'SMS').length;
-  const callCount = deliveries.filter(d => d.method === 'Call').length;
-  const failedCount = deliveries.filter(d => d.status === 'Failed').length;
-  const successRate = deliveries.length ? Math.round(((deliveries.length - failedCount) / deliveries.length) * 100) : 100;
+  const smsCount = deliveries.filter(d => d.sms).length;
+  const callCount = deliveries.filter(d => d.call).length;
+  const failedCount = deliveries.reduce((n, d) => n + (d.sms === 'Failed' ? 1 : 0) + (d.call === 'Failed' ? 1 : 0), 0);
+  const attempts = smsCount + callCount;
+  const successRate = attempts ? Math.round(((attempts - failedCount) / attempts) * 100) : 100;
 
   // Pagination: 10 per page, newest first
-  useEffect(() => { setPage(1); }, [search, filterStatus, filterMethod]);
+  useEffect(() => { setPage(1); }, [search, filterStatus]);
   const totalPages = Math.max(1, Math.ceil(filteredDeliveries.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -202,18 +227,6 @@ export function AdminAlertDelivery() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm focus:outline-none focus:border-primary w-full md:w-56"
               />
-            </div>
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <select
-                value={filterMethod}
-                onChange={(e) => setFilterMethod(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-card border border-border rounded-xl text-sm focus:outline-none focus:border-primary appearance-none cursor-pointer text-foreground h-[38px]"
-              >
-                <option value="all">SMS &amp; Calls</option>
-                <option value="SMS">SMS only</option>
-                <option value="Call">Calls only</option>
-              </select>
             </div>
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -258,21 +271,20 @@ export function AdminAlertDelivery() {
         ) : (
         <div ref={tableTopRef} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden scroll-mt-4">
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-sm min-w-[720px]">
+            <table className="w-full text-left text-sm min-w-[680px]">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-6 py-4">Time</th>
                   <th className="font-medium px-6 py-4">Patient / Device</th>
                   <th className="font-medium px-6 py-4">Alert</th>
                   <th className="font-medium px-6 py-4">Sent to</th>
-                  <th className="font-medium px-6 py-4">Method</th>
-                  <th className="font-medium px-6 py-4">Status</th>
+                  <th className="font-medium px-6 py-4">SMS &amp; Call</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                       {search ? "No logs matched your search" : "No alerts sent yet"}
                     </td>
                   </tr>
@@ -304,33 +316,10 @@ export function AdminAlertDelivery() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-lg text-xs font-medium text-muted-foreground">
-                          {d.method === 'SMS' ? <MessageSquare className="size-3" /> : <PhoneCall className="size-3" />}
-                          {d.method}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {d.status === 'Delivered' ? (
-                          <div className="flex items-center gap-1.5 text-success">
-                            <CheckCircle2 className="size-4" />
-                            <span className="text-xs font-medium">Delivered</span>
-                          </div>
-                        ) : d.status === 'Failed' ? (
-                          <div className="flex items-center gap-1.5 text-destructive">
-                            <XCircle className="size-4" />
-                            <span className="text-xs font-medium">Failed</span>
-                          </div>
-                        ) : d.status === 'Pending' ? (
-                          <div className="flex items-center gap-1.5 text-warning">
-                            <Clock className="size-4" />
-                            <span className="text-xs font-medium">Pending</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-success">
-                            <Send className="size-4" />
-                            <span className="text-xs font-medium">Sent</span>
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {d.sms && <ChannelBadge label="SMS" icon={<MessageSquare className="size-3.5" />} status={d.sms} />}
+                          {d.call && <ChannelBadge label="Call" icon={<PhoneCall className="size-3.5" />} status={d.call} />}
+                        </div>
                       </td>
                     </tr>
                   ))
