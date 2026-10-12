@@ -58,7 +58,18 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     setShowLogoutConfirm(false);
     onLogout();
   };
-  const [activeTab, setActiveTab] = useState<TabType>('map');
+  const [activeTab, setActiveTabState] = useState<TabType>('map');
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const scrollToTop = useCallback(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 });
+  }, []);
+  // Always jump back to the top when switching pages (also when re-clicking the same page)
+  const setActiveTab = useCallback((tab: TabType) => {
+    setActiveTabState(tab);
+    scrollToTop();
+  }, [scrollToTop]);
+  useEffect(() => { scrollToTop(); }, [activeTab, scrollToTop]);
   const [deviceData, setDeviceData] = useState<any>(fallbackDeviceData);
   const [hasAlert, setHasAlert] = useState(false);
   const [incidentsCount, setIncidentsCount] = useState(0);
@@ -747,7 +758,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             )}
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8">
+            <div ref={contentRef} className="flex-1 overflow-y-auto p-4 md:p-8">
               {/* Stats Overview */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
