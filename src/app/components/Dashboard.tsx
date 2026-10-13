@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, MapPin, Activity, Bell, LogOut, User, Phone, AlertTriangle, CheckCircle, Battery, Wifi, TrendingUp, X, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, Calendar, BarChart3, AlertOctagon, Settings, MessageSquare } from 'lucide-react';
+import { Plus, MapPin, Activity, Bell, LogOut, User, Phone, AlertTriangle, CheckCircle, Battery, Wifi, TrendingUp, X, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, BarChart3, AlertOctagon, Settings, MessageSquare } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +14,6 @@ import { FallHistory } from './FallHistory';
 import { DeviceStatus } from './DeviceStatus';
 import { EmergencyContacts } from './EmergencyContacts';
 import { JoinRequests } from './JoinRequests';
-import { CaregiverSchedule } from './CaregiverSchedule';
 import { CaregiverAnalytics } from './CaregiverAnalytics';
 import { useBatteryLevels } from './BatteryPanel';
 import { UserSettings } from './UserSettings';
@@ -30,7 +29,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type TabType = 'map' | 'history' | 'device' | 'audio' | 'contacts' | 'join_requests' | 'schedule' | 'analytics' | 'settings';
+type TabType = 'map' | 'history' | 'device' | 'audio' | 'contacts' | 'join_requests' | 'analytics' | 'settings';
 
 const fallbackDeviceData = {
   status: 'offline',
@@ -700,17 +699,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                 </li>
                 <li>
                   <button
-                    onClick={() => setActiveTab('schedule')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'schedule' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <Calendar className="size-4" />
-                    Care Schedule
-                  </button>
-                </li>
-                <li>
-                  <button
                     onClick={() => setActiveTab('contacts')}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       activeTab === 'contacts' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
@@ -820,7 +808,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
               {activeTab === 'history' && <FallHistory deviceId={deviceId!} />}
               {activeTab === 'analytics' && <CaregiverAnalytics deviceId={deviceId!} />}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
-              {activeTab === 'schedule' && <CaregiverSchedule familyId={familyId!} />}
               {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} />}
               {activeTab === 'join_requests' && <JoinRequests familyId={familyId!} />}
               {activeTab === 'settings' && <UserSettings />}
