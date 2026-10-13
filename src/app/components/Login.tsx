@@ -454,7 +454,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
         // ----------------------------------------------------------
 
         setInfo(
-          'A request to join this family has been sent to the existing caregivers for approval. You will gain access once approved.'
+          'A request to join this family has been sent to the administrator for approval. You will gain access once approved.'
         );
 
         if (onSignUpComplete) {

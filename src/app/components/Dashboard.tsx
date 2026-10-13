@@ -13,7 +13,6 @@ import { LocationMap } from './LocationMap';
 import { FallHistory } from './FallHistory';
 import { DeviceStatus } from './DeviceStatus';
 import { EmergencyContacts } from './EmergencyContacts';
-import { JoinRequests } from './JoinRequests';
 import { CaregiverAnalytics } from './CaregiverAnalytics';
 import { useBatteryLevels } from './BatteryPanel';
 import { UserSettings } from './UserSettings';
@@ -29,7 +28,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type TabType = 'map' | 'history' | 'device' | 'audio' | 'contacts' | 'join_requests' | 'analytics' | 'settings';
+type TabType = 'map' | 'history' | 'device' | 'audio' | 'contacts' | 'analytics' | 'settings';
 
 const fallbackDeviceData = {
   status: 'offline',
@@ -392,7 +391,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
           status: 'pending_review',
         });
         
-        setLinkSuccess('A request to join this family has been sent to the existing caregivers.');
+        setLinkSuccess('A request to join this family has been sent to the administrator for approval.');
         await set(ref(db, `users/${user.uid}/accessStatus`), 'pending');
         return;
       }
@@ -708,17 +707,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                     Emergency Contacts
                   </button>
                 </li>
-                <li>
-                  <button
-                    onClick={() => setActiveTab('join_requests')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'join_requests' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <User className="size-4" />
-                    Join Requests
-                  </button>
-                </li>
               </ul>
             </div>
           </nav>
@@ -728,7 +716,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             {/* Header */}
             <header className="h-16 flex items-center justify-between px-8 border-b border-border bg-card shrink-0">
               <h2 className="text-lg font-semibold text-foreground capitalize">
-                {activeTab === 'join_requests' ? 'Join Requests' : activeTab}
+                {activeTab}
               </h2>
               <div className="flex items-center gap-4">
                 <span className="text-sm text-muted-foreground hidden sm:inline-block">
@@ -809,7 +797,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
               {activeTab === 'analytics' && <CaregiverAnalytics deviceId={deviceId!} />}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
               {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} />}
-              {activeTab === 'join_requests' && <JoinRequests familyId={familyId!} />}
               {activeTab === 'settings' && <UserSettings />}
             </div>
           </main>
