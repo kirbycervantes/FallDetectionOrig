@@ -757,15 +757,18 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                     key={label}
                     className={`bg-card border border-border rounded-2xl p-3 sm:p-4 shadow-sm ${i === 0 ? 'col-span-2 sm:col-span-1' : ''}`}
                   >
-                    <div className="flex items-center gap-2 sm:gap-2.5 mb-2 sm:mb-3 min-w-0">
-                      <div className={`shrink-0 p-1.5 sm:p-2 rounded-lg ${tint}`}>
-                        <Icon className="size-4" />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`shrink-0 p-2 sm:p-2.5 rounded-xl ${tint}`}>
+                        <Icon className="size-5" />
                       </div>
-                      <p className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</p>
-                    </div>
-                    <div className="flex items-end justify-between gap-2">
-                      <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{value}</p>
-                      <span className="text-[11px] text-muted-foreground text-right leading-tight">{note}</span>
+                      {/* label and value share the same left edge */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</p>
+                        <div className="flex items-baseline justify-between gap-2 mt-1">
+                          <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{value}</p>
+                          <span className="text-[11px] text-muted-foreground text-right leading-tight">{note}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}

@@ -16,7 +16,8 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** 'danger' = red confirm button (delete, sign out, …) */
   tone?: 'primary' | 'danger';
-  icon?: ReactNode;
+  /** null = no icon at all */
+  icon?: ReactNode | null;
 }
 
 interface ConfirmDialogProps extends ConfirmOptions {
@@ -65,13 +66,15 @@ export function ConfirmDialog({
         className="bg-card border border-border rounded-2xl p-6 shadow-xl max-w-sm w-full animate-in zoom-in-95 fade-in duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className={`flex items-center justify-center size-12 rounded-xl mx-auto mb-4 ${
-            danger ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
-          }`}
-        >
-          {icon ?? (danger ? <AlertTriangle className="size-6" /> : <HelpCircle className="size-6" />)}
-        </div>
+        {icon !== null && (
+          <div
+            className={`flex items-center justify-center size-12 rounded-xl mx-auto mb-4 ${
+              danger ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+            }`}
+          >
+            {icon ?? (danger ? <AlertTriangle className="size-6" /> : <HelpCircle className="size-6" />)}
+          </div>
+        )}
         <h3 id="confirm-title" className="text-lg font-semibold text-foreground text-center mb-2">
           {title}
         </h3>

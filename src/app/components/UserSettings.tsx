@@ -31,6 +31,7 @@ export function UserSettings() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
 
   // Field-level inline validation errors
   const [inlineEmailError, setInlineEmailError] = useState('');
@@ -93,12 +94,13 @@ export function UserSettings() {
             message: 'The administrator will be asked to remove your caregiver account from this family. You will lose access to the dashboard once it is approved.',
             confirmLabel: 'Send Request',
             tone: 'danger',
+            icon: null,
           }
         : {
             title: 'Submit this ticket?',
             message: <>Subject: <strong className="text-foreground">{subject}</strong><br />The administrator will see your message and email address.</>,
             confirmLabel: 'Submit Ticket',
-            icon: <Ticket className="size-6" />,
+            icon: null,
           }
     );
     if (!ok) return;
@@ -152,7 +154,7 @@ export function UserSettings() {
       title: 'Change your email?',
       message: <>A verification link will be sent to <strong className="text-foreground">{newEmail.trim()}</strong>. Your login email changes only after you open that link.</>,
       confirmLabel: 'Send Link',
-      icon: <Mail className="size-6" />,
+      icon: null,
     });
     if (!ok) return;
 
@@ -188,7 +190,7 @@ export function UserSettings() {
       title: 'Change your phone number?',
       message: <>{currentPhone ? <>From <strong className="text-foreground">{currentPhone}</strong> to </> : <>New number: </>}<strong className="text-foreground">{newPhone.trim()}</strong></>,
       confirmLabel: 'Update Number',
-      icon: <Phone className="size-6" />,
+      icon: null,
     });
     if (!ok) return;
 
@@ -461,8 +463,9 @@ export function UserSettings() {
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Confirm New Password</label>
+            <div className="relative">
             <input
-              type="password"
+              type={showConfirmNewPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value);
@@ -473,9 +476,18 @@ export function UserSettings() {
                 }
               }}
               placeholder="Confirm new password"
-              className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition text-sm"
+              className="w-full px-4 py-2.5 pr-10 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition text-sm"
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+              aria-label={showConfirmNewPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showConfirmNewPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+            </div>
             {inlineConfirmError && <p className="text-xs text-destructive mt-1">{inlineConfirmError}</p>}
           </div>
           <button
@@ -534,9 +546,6 @@ export function UserSettings() {
       {showPasswordConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4">
-            <div className="flex items-center justify-center size-12 bg-primary/10 rounded-xl mx-auto mb-4">
-              <Lock className="size-6 text-primary" />
-            </div>
             <h3 className="text-lg font-semibold text-foreground text-center mb-2">Change Password</h3>
             <p className="text-sm text-muted-foreground text-center mb-6">
               Are you sure you want to change your password?
@@ -566,12 +575,7 @@ export function UserSettings() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-5 border-b border-border bg-muted/30">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                  <Ticket className="size-5" />
-                </div>
-                <h3 className="font-semibold text-foreground">Submit a Ticket</h3>
-              </div>
+              <h3 className="font-semibold text-foreground">Submit a Ticket</h3>
               <button onClick={() => setShowSupportModal(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="size-5" />
               </button>
@@ -632,9 +636,6 @@ export function UserSettings() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center p-6 pb-8">
-              <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-                <AlertTriangle className="size-6 text-destructive" />
-              </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Request Account Removal</h3>
               <p className="text-sm text-muted-foreground mb-1">
                 This will submit a request to remove <strong className="text-foreground">your caregiver account</strong> from the family.
