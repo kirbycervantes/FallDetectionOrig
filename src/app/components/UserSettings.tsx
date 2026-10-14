@@ -9,7 +9,26 @@ import {
   EmailAuthProvider,
 } from 'firebase/auth';
 import { useConfirm } from './ui/confirm-dialog';
-import { removePhoneIndex, savePhoneIndex } from '../../lib/phoneIndex';
+import { normalizePhone, removePhoneIndex, savePhoneIndex } from '../../lib/phoneIndex';
+
+// "+63" is fixed; the user types the 10 digits after it (9XX XXX XXXX).
+const PHONE_ERROR = 'Enter the 10 digits after +63, starting with 9 (e.g., +63 912 345 6789).';
+
+/** keeps only the digits after +63, max 10 (also accepts a pasted 09... or +63... number) */
+function phoneDigitsAfter63(value: string): string {
+  let d = value.replace(/\D/g, '');
+  if (d.startsWith('63')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
+/** "09123456789" -> "+63 912 345 6789" */
+function displayPhone(phone: string): string {
+  const n = normalizePhone(phone);
+  if (!n) return phone || '—';
+  const d = n.slice(1);
+  return `+63 ${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+}
 
 export function UserSettings() {
   // Email
@@ -180,15 +199,16 @@ export function UserSettings() {
     e.preventDefault();
     if (!user || !newPhone.trim()) return;
 
-    const phoneRegex = /^09\d{9}$/;
-    if (!phoneRegex.test(newPhone.trim())) {
-      setPhoneMsg({ type: 'error', text: 'Phone number must contain exactly 11 digits and start with 09 (e.g., 09123456789).' });
+    if (!/^9\d{9}$/.test(newPhone)) {
+      setPhoneMsg({ type: 'error', text: PHONE_ERROR });
       return;
     }
+    // saved as 09XXXXXXXXX, the same format used at sign-up
+    const phoneToSave = '0' + newPhone;
 
     const ok = await confirm({
       title: 'Change your phone number?',
-      message: <>{currentPhone ? <>From <strong className="text-foreground">{currentPhone}</strong> to </> : <>New number: </>}<strong className="text-foreground">{newPhone.trim()}</strong></>,
+      message: <>{currentPhone ? <>From <strong className="text-foreground">{displayPhone(currentPhone)}</strong> to </> : <>New number: </>}<strong className="text-foreground">{displayPhone(phoneToSave)}</strong></>,
       confirmLabel: 'Update Number',
       icon: null,
     });
@@ -197,10 +217,10 @@ export function UserSettings() {
     setPhoneLoading(true);
     setPhoneMsg(null);
     try {
-      await update(ref(db, `users/${user.uid}`), { phone: newPhone.trim() });
+      await update(ref(db, `users/${user.uid}`), { phone: phoneToSave });
       // keep "Forgot password -> use phone number" pointing at this account
-      if (currentPhone && currentPhone !== newPhone.trim()) await removePhoneIndex(currentPhone);
-      await savePhoneIndex(newPhone.trim(), user.uid, user.email);
+      if (currentPhone && normalizePhone(currentPhone) !== phoneToSave) await removePhoneIndex(currentPhone);
+      await savePhoneIndex(phoneToSave, user.uid, user.email);
       setPhoneMsg({ type: 'success', text: 'Phone number updated successfully.' });
       setNewPhone('');
     } catch (err: any) {
@@ -302,7 +322,7 @@ export function UserSettings() {
           </div>
           <div className="p-4 bg-muted border border-border rounded-xl">
             <p className="text-xs text-muted-foreground mb-1">Phone Number</p>
-            <p className="text-sm font-medium text-foreground">{currentPhone || '—'}</p>
+            <p className="text-sm font-medium text-foreground">{currentPhone ? displayPhone(currentPhone) : '—'}</p>
           </div>
         </div>
       </div>
@@ -369,22 +389,25 @@ export function UserSettings() {
         <div className="mt-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">New Phone Number</label>
-            <input
-              type="tel"
-              value={newPhone}
-              onChange={(e) => {
-                setNewPhone(e.target.value);
-                const val = e.target.value;
-                if (val.trim() && !/^09\d{9}$/.test(val.trim())) {
-                  setInlinePhoneError('Phone number must contain exactly 11 digits and start with 09.');
-                } else {
-                  setInlinePhoneError('');
-                }
-              }}
-              placeholder="09123456789"
-              className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition text-sm"
-              required
-            />
+            <div className="flex items-stretch w-full bg-input-background border border-border rounded-xl focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition overflow-hidden">
+              <span className="flex items-center px-3 text-sm font-medium text-foreground bg-muted border-r border-border select-none">
+                +63
+              </span>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={newPhone}
+                onChange={(e) => {
+                  const digits = phoneDigitsAfter63(e.target.value);
+                  setNewPhone(digits);
+                  setInlinePhoneError(digits && !/^9\d{9}$/.test(digits) ? PHONE_ERROR : '');
+                }}
+                placeholder="9123456789"
+                aria-label="New phone number, digits after +63"
+                className="flex-1 min-w-0 px-3 py-2.5 bg-transparent text-foreground placeholder-muted-foreground focus:outline-none text-sm tracking-wide"
+                required
+              />
+            </div>
             {inlinePhoneError && <p className="text-xs text-destructive mt-1">{inlinePhoneError}</p>}
           </div>
           <button
