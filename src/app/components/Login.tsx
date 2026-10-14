@@ -3,6 +3,7 @@ import { FirebaseError } from 'firebase/app';
 import { sendJoinRequestEmail } from '../../lib/email';
 import { Shield, Cpu, UserCheck, Phone, Eye, EyeOff } from 'lucide-react';
 import { formatPhoneNumber } from '../../lib/formatPhone';
+import { ForgotPassword } from './ForgotPassword';
 
 interface LoginProps {
   onSignUpComplete?: (status: 'active' | 'pending') => void;
@@ -10,6 +11,7 @@ interface LoginProps {
 
 export function Login({ onSignUpComplete }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -770,7 +772,14 @@ export function Login({ onSignUpComplete }: LoginProps) {
           </div>
 
           {/* Login/Signup Card */}
-          <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-8 shadow-sm">
+
+            {showForgot ? (
+              <ForgotPassword
+                initialEmail={email}
+                onBack={() => { setShowForgot(false); setError(''); setInfo(''); }}
+              />
+            ) : (<>
 
             {/* Toggle Tabs */}
             <div className="flex gap-2 mb-6 p-1 bg-muted rounded-xl">
@@ -1051,6 +1060,18 @@ export function Login({ onSignUpComplete }: LoginProps) {
                       </p>
                     )}
 
+                    {!isSignUp && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => { setShowForgot(true); setError(''); setInfo(''); }}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
+
                   </div>
 
                   {/* Confirm Password */}
@@ -1216,6 +1237,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
               </button>
 
             </form>
+            </>)}
 
           </div>
 

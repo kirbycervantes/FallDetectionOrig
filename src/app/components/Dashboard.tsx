@@ -1,20 +1,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, MapPin, Activity, Bell, LogOut, User, Phone, AlertTriangle, CheckCircle, Battery, Wifi, TrendingUp, X, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, BarChart3, AlertOctagon, Settings, MessageSquare } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+import { Plus, MapPin, Activity, Bell, LogOut, Phone, AlertTriangle, CheckCircle, Battery, Wifi, WifiOff, PhoneCall, XCircle, Clock, Volume2, VolumeX, Navigation, AlertOctagon, Settings, Cpu, Eye } from 'lucide-react';
 import { LocationMap } from './LocationMap';
 import { FallHistory } from './FallHistory';
 import { DeviceStatus } from './DeviceStatus';
 import { EmergencyContacts } from './EmergencyContacts';
-import { CaregiverAnalytics } from './CaregiverAnalytics';
 import { useBatteryLevels } from './BatteryPanel';
+import { isCountedFall } from '../../lib/events';
+import { isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 import { UserSettings } from './UserSettings';
 import { SkeletonPage } from './ui/skeleton';
 import { db, ref, onValue, update, push, set } from '../../lib/db';
@@ -28,7 +21,22 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type TabType = 'map' | 'history' | 'device' | 'audio' | 'contacts' | 'analytics' | 'settings';
+type TabType = 'map' | 'history' | 'device' | 'contacts' | 'settings';
+
+const TAB_TITLES: Record<TabType, string> = {
+  map: 'Live Map',
+  history: 'Fall History',
+  device: 'Device Status',
+  contacts: 'Emergency Contacts',
+  settings: 'Settings',
+};
+
+const NAV_ITEMS: { tab: TabType; label: string; short: string; icon: typeof MapPin; group: 'Monitoring' | 'Device & Family' }[] = [
+  { tab: 'map', label: 'Live Map', short: 'Map', icon: MapPin, group: 'Monitoring' },
+  { tab: 'history', label: 'Fall History', short: 'History', icon: Activity, group: 'Monitoring' },
+  { tab: 'device', label: 'Device Status', short: 'Device', icon: Cpu, group: 'Device & Family' },
+  { tab: 'contacts', label: 'Emergency Contacts', short: 'Contacts', icon: Phone, group: 'Device & Family' },
+];
 
 const fallbackDeviceData = {
   status: 'offline',
@@ -46,6 +54,8 @@ const fallbackDeviceData = {
 };
 
 export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardProps) {
+  // An administrator viewing a family is always read-only: no alarm, no alert actions, no edits.
+  const readOnly = !!impersonatedFamilyId;
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogoutClick = () => {
@@ -71,7 +81,8 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
   const [deviceData, setDeviceData] = useState<any>(fallbackDeviceData);
   const [hasAlert, setHasAlert] = useState(false);
   const [incidentsCount, setIncidentsCount] = useState(0);
-  const [incidentOffset, setIncidentOffset] = useState(0);
+  const [contactsCount, setContactsCount] = useState(0);
+  const now = useNow(5000);
   
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [patientName, setPatientName] = useState<string>('');
@@ -109,7 +120,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
         if (resolvedDeviceId) {
           setDeviceId(resolvedDeviceId);
         }
-        setIncidentOffset(famData?.incidentOffset || 0);
           setPatientName(famData?.monitoredPerson?.name || famData?.monitoredPersonName || famData?.patientName || '');
         setLoadingContext(false);
       });
@@ -130,7 +140,6 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
           if (resolvedDeviceId) {
             setDeviceId(resolvedDeviceId);
           }
-          setIncidentOffset(famData?.incidentOffset || 0);
           setPatientName(famData?.monitoredPerson?.name || famData?.monitoredPersonName || famData?.patientName || '');
           setLoadingContext(false);
         }, (error) => {
@@ -176,10 +185,11 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     const unsubscribeEvents = onValue(eventsRef, (snapshot) => {
       if (snapshot.exists()) {
         const events = snapshot.val();
-        const count = Object.values(events).filter((e: any) => 
-          e.status !== 'cancelled'
-        ).length;
+        // Total Falls = real falls only (not Manual SOS, not cancelled)
+        const count = Object.values(events).filter((e: any) => isCountedFall(e)).length;
         setIncidentsCount(count);
+      } else {
+        setIncidentsCount(0);
       }
     });
     
@@ -189,10 +199,20 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     };
   }, [deviceId]);
 
+  // Number of emergency contacts actually registered for this family
+  useEffect(() => {
+    if (!familyId) return;
+    const unsub = onValue(ref(db, `families/${familyId}/contacts`), (snap) => {
+      const v = snap.val();
+      setContactsCount(v && typeof v === 'object' ? Object.keys(v).length : 0);
+    });
+    return () => unsub();
+  }, [familyId]);
+
   // Request FCM permissions and save token to the device node
   // This allows the ESP32 to simply read devices/{deviceId}/fcmTokens to get all targets
   useEffect(() => {
-    if (deviceId && user) {
+    if (deviceId && user && !readOnly) {
       import('../../lib/messaging').then(({ requestNotificationPermission }) => {
         requestNotificationPermission().then(token => {
           if (token) {
@@ -259,7 +279,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
 
   // Start alarm when alert appears
   useEffect(() => {
-    if (hasAlert) {
+    if (hasAlert && !readOnly) {
       startAlarm();
     } else {
       stopAlarm();
@@ -451,6 +471,17 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     }
   };
 
+  if (!deviceId && readOnly) {
+    return (
+      <div className="size-full min-h-screen flex items-center justify-center bg-background text-foreground p-4">
+        <div className="w-full max-w-md bg-card border border-border rounded-2xl p-8 shadow-sm text-center">
+          <h2 className="text-xl font-semibold mb-2">No device linked</h2>
+          <p className="text-sm text-muted-foreground">This family has no linked device. Linking a device is not available in the admin read-only view.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!deviceId) {
     return (
       <div className="size-full min-h-screen flex flex-col items-center justify-center bg-background text-foreground p-4">
@@ -559,253 +590,219 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     );
   }
 
+  const online = isDeviceOnline(deviceData, now);
+  const seen = lastSeen(deviceData);
+  const displayName = patientName || deviceData.user?.name || 'your loved one';
+
+  const statCards = [
+    {
+      label: 'Connection',
+      icon: online ? Wifi : WifiOff,
+      tint: online ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
+      value: online ? 'Online' : 'Offline',
+      note: online ? 'Live' : `Last seen ${timeAgo(seen, now)}`,
+    },
+    {
+      label: 'Wearable Battery',
+      icon: Battery,
+      tint: 'bg-primary/10 text-primary',
+      value: `${Math.round(batteryLevels.wearable)}%`,
+      note: batteryLevels.wearable > 20 ? 'Good' : 'Low',
+    },
+    {
+      label: 'Central Hub Battery',
+      icon: Battery,
+      tint: 'bg-primary/10 text-primary',
+      value: `${Math.round(batteryLevels.hub)}%`,
+      note: batteryLevels.hub > 20 ? 'Good' : 'Low',
+    },
+    {
+      label: 'Total Falls',
+      icon: Bell,
+      tint: 'bg-destructive/10 text-destructive',
+      value: String(incidentsCount),
+      note: 'All time',
+    },
+    {
+      label: 'Contacts',
+      icon: Phone,
+      tint: 'bg-warning/10 text-warning',
+      value: String(contactsCount),
+      note: contactsCount === 0 ? 'None added' : 'Registered',
+    },
+  ];
+
   return (
     <div className="size-full flex flex-col bg-background text-foreground">
       {/* Top Bar */}
-      <header className="relative border-b border-border bg-card">
-        <div className="relative px-4 md:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <header className="relative border-b border-border bg-card shrink-0">
+        <div className="px-4 md:px-8 py-3 flex items-center justify-between gap-3">
           {/* Left: Brand */}
-          <div className="flex items-center gap-4">
-            <div className="relative p-2.5 bg-primary/10 rounded-xl text-primary">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="shrink-0 p-2.5 bg-primary/10 rounded-xl text-primary">
               <Activity className="size-5" strokeWidth={2} />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">CareBeacon</h1>
-              <p className="text-xs text-muted-foreground">{patientName || deviceData.user?.name || 'Patient'}{deviceData.user?.age ? `, ${deviceData.user.age}` : ''}</p>
+            <div className="min-w-0 leading-tight">
+              <h1 className="text-base md:text-lg font-semibold tracking-tight text-foreground">CareBeacon</h1>
+              <p className="text-xs text-muted-foreground truncate">{patientName || deviceData.user?.name || 'Patient'}</p>
             </div>
           </div>
-          
-          {/* Right: Status & Actions */}
-          <div className="flex flex-wrap items-center justify-center md:justify-end gap-4">
+
+          {/* Right: Alert, Settings, Sign out */}
+          <div className="flex items-center gap-2 shrink-0">
             {hasAlert && (
-              <div className="flex items-center gap-4 px-4 py-2 bg-destructive/10 border border-destructive/20 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="size-4 text-destructive animate-pulse" />
-                  <span className="text-sm font-bold text-destructive uppercase">UNCONFIRMED FALL</span>
-                </div>
-                <button 
-                  onClick={handleConfirmAlert}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs font-medium rounded-lg transition"
-                >
-                  <CheckCircle className="size-3" />
-                  Confirm Alert
-                </button>
+              <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <AlertTriangle className="size-4 text-destructive animate-pulse" />
+                <span className="text-xs font-bold text-destructive uppercase">Unconfirmed fall</span>
+                {!readOnly && (
+                  <button
+                    onClick={handleConfirmAlert}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs font-medium rounded-lg transition"
+                  >
+                    <CheckCircle className="size-3" />
+                    Confirm
+                  </button>
+                )}
               </div>
             )}
-            
-            <div className="flex items-center gap-3 px-4 py-2 bg-card border border-border rounded-xl shadow-sm">
-              <div className={`size-2 rounded-full ${deviceData.status !== 'offline' ? 'bg-success' : 'bg-destructive'}`}></div>
-              <span className="text-sm font-medium capitalize text-foreground">{deviceData.status}</span>
-            </div>
-            
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <div className={`flex items-center justify-center size-10 rounded-full font-medium cursor-pointer transition-colors ${impersonatedFamilyId ? 'bg-warning/20 text-warning hover:bg-warning/30' : 'bg-secondary text-primary hover:bg-secondary/80'}`}>
-                    {impersonatedFamilyId ? 'ADMIN' : (user.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U')}
-                  </div>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  {impersonatedFamilyId ? (
-                    <>
-                      <DropdownMenuLabel className="text-warning">Impersonation Mode</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                        Settings and sign-out are disabled while viewing as a family.
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setActiveTab('settings')}
-                        className="cursor-pointer"
-                      >
-                        <Settings className="mr-2 h-4 w-4" />
-                        <span>Settings</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={handleLogoutClick}
-                        className="text-destructive focus:text-destructive cursor-pointer"
-                      >
-                        <LogOut className="mr-2 h-4 w-4" />
-                        <span>Sign Out</span>
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+            {readOnly ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-warning/15 text-warning text-xs font-semibold">
+                <Eye className="size-3.5" />
+                Admin view
+              </span>
+            ) : (
+              <>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  aria-label="Settings"
+                  title="Settings"
+                  className={`flex items-center justify-center size-10 rounded-xl border transition-colors ${
+                    activeTab === 'settings'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-foreground border-border hover:bg-secondary'
+                  }`}
+                >
+                  <Settings className="size-5" />
+                </button>
+                <button
+                  onClick={handleLogoutClick}
+                  aria-label="Sign out"
+                  title="Sign out"
+                  className="flex items-center gap-2 h-10 px-3 rounded-xl border border-border bg-card text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors text-sm font-medium"
+                >
+                  <LogOut className="size-4" />
+                  <span className="hidden sm:inline">Sign out</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
-      
+
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar Navigation */}
-        <nav className="w-56 border-r border-border bg-card px-4 py-6 space-y-6 overflow-y-auto shrink-0 hidden md:flex md:flex-col sticky top-0 h-[calc(100vh-73px)]">
-            <div>
-              <h3 className="px-2 text-xs font-medium text-muted-foreground mb-2">Monitoring</h3>
+        {/* Sidebar Navigation (tablet / desktop) */}
+        <nav className="w-56 border-r border-border bg-card px-4 py-6 space-y-6 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+          {(['Monitoring', 'Device & Family'] as const).map((group) => (
+            <div key={group}>
+              <h3 className="px-2 text-xs font-medium text-muted-foreground mb-2">{group}</h3>
               <ul className="space-y-1">
-                <li>
-                  <button
-                    onClick={() => setActiveTab('map')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'map' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <MapPin className="size-4" />
-                    Live Map
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveTab('history')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'history' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <Activity className="size-4" />
-                    Fall History
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveTab('analytics')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'analytics' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <BarChart3 className="size-4" />
-                    Analytics
-                  </button>
-                </li>
+                {NAV_ITEMS.filter((item) => item.group === group).map(({ tab, label, icon: Icon }) => (
+                  <li key={tab}>
+                    <button
+                      onClick={() => setActiveTab(tab)}
+                      aria-current={activeTab === tab ? 'page' : undefined}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-left whitespace-nowrap transition-colors ${
+                        activeTab === tab ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
+                      }`}
+                    >
+                      <Icon className="size-4 shrink-0" />
+                      {label}
+                    </button>
+                  </li>
+                ))}
               </ul>
             </div>
+          ))}
+        </nav>
 
-            <div>
-              <h3 className="px-2 text-xs font-medium text-muted-foreground mb-2">Device & Family</h3>
-              <ul className="space-y-1">
-                <li>
-                  <button
-                    onClick={() => setActiveTab('device')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'device' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <Battery className="size-4" />
-                    Device Status
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveTab('contacts')}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === 'contacts' ? 'bg-secondary text-primary' : 'text-foreground hover:bg-secondary/50 hover:text-primary'
-                    }`}
-                  >
-                    <Phone className="size-4" />
-                    Emergency Contacts
-                  </button>
-                </li>
-              </ul>
+        {/* Main Content Area */}
+        <main className="flex-1 flex flex-col overflow-hidden bg-background min-w-0">
+          {/* Page title */}
+          <div className="h-14 flex items-center justify-between gap-3 px-4 md:px-8 border-b border-border bg-card shrink-0">
+            <h2 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
+              {activeTab === 'settings' && <Settings className="size-4 text-primary" />}
+              {TAB_TITLES[activeTab]}
+            </h2>
+            <span className="text-xs md:text-sm text-muted-foreground truncate">
+              Monitoring {displayName}
+            </span>
+          </div>
+
+          {/* Proactive Warnings */}
+          {!hasAlert && isLowBattery && (
+            <div className="bg-red-500 text-white px-4 py-3 flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
+              <Battery className="size-5" />
+              <p className="text-sm font-medium">Device battery is critically low ({Math.round(deviceData.battery)}%). Please charge immediately.</p>
             </div>
-          </nav>
-          
-          {/* Main Content Area */}
-          <main className="flex-1 flex flex-col overflow-hidden bg-background">
-            {/* Header */}
-            <header className="h-16 flex items-center justify-between px-8 border-b border-border bg-card shrink-0">
-              <h2 className="text-lg font-semibold text-foreground capitalize">
-                {activeTab}
-              </h2>
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-muted-foreground hidden sm:inline-block">
-                  Monitoring {patientName || deviceData.user?.name || 'your loved one'}
-                </span>
-              </div>
-            </header>
+          )}
 
-            {/* Proactive Warnings */}
-            {!hasAlert && isLowBattery && (
-              <div className="bg-red-500 text-white px-4 py-3 flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
-                <Battery className="size-5" />
-                <p className="text-sm font-medium">Device battery is critically low ({Math.round(deviceData.battery)}%). Please charge immediately.</p>
+          {/* Scrollable Content (extra bottom space on phones for the bottom bar) */}
+          <div ref={contentRef} className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+            {/* Status cards - not on Settings, so it is clear you are on the Settings page */}
+            {activeTab !== 'settings' && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
+                {statCards.map(({ label, icon: Icon, tint, value, note }, i) => (
+                  <div
+                    key={label}
+                    className={`bg-card border border-border rounded-2xl p-3 sm:p-4 shadow-sm ${i === 0 ? 'col-span-2 sm:col-span-1' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 sm:gap-2.5 mb-2 sm:mb-3 min-w-0">
+                      <div className={`shrink-0 p-1.5 sm:p-2 rounded-lg ${tint}`}>
+                        <Icon className="size-4" />
+                      </div>
+                      <p className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</p>
+                    </div>
+                    <div className="flex items-end justify-between gap-2">
+                      <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{value}</p>
+                      <span className="text-[11px] text-muted-foreground text-right leading-tight">{note}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Scrollable Content */}
-            <div ref={contentRef} className="flex-1 overflow-y-auto p-4 md:p-8">
-              {/* Stats Overview */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-success/10 rounded-xl">
-                      <Wifi className="size-5 text-success" />
-                    </div>
-                    <TrendingUp className="size-4 text-success" />
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-1">Connection</p>
-                  <p className="text-2xl font-semibold text-foreground">Online</p>
-                </div>
-                
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-primary/10 rounded-xl">
-                      <Battery className="size-5 text-primary" />
-                    </div>
-                    <span className="text-xs text-muted-foreground">{batteryLevels.wearable > 20 ? 'Good' : 'Low'}</span>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-1">Wearable Battery</p>
-                  <p className="text-2xl font-semibold text-foreground">{Math.round(batteryLevels.wearable)}%</p>
-                </div>
-                
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-primary/10 rounded-xl">
-                      <Battery className="size-5 text-primary" />
-                    </div>
-                    <span className="text-xs text-muted-foreground">{batteryLevels.hub > 20 ? 'Good' : 'Low'}</span>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-1">Central Hub Battery</p>
-                  <p className="text-2xl font-semibold text-foreground">{Math.round(batteryLevels.hub)}%</p>
-                </div>
-                
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-destructive/10 rounded-xl">
-                      <Bell className="size-5 text-destructive" />
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mt-1">Total Falls</p>
-                  <p className="text-2xl font-bold text-foreground mt-0.5">{Math.max(0, incidentsCount + incidentOffset)}</p>
-                </div>
-                
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2.5 bg-warning/10 rounded-xl">
-                      <Phone className="size-5 text-warning" />
-                    </div>
-                    <span className="text-xs text-muted-foreground">Active</span>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-1">Contacts</p>
-                  <p className="text-2xl font-semibold text-foreground">3</p>
-                </div>
-              </div>
-
+            {/* key = page: the page re-mounts (and fades in) every time you switch */}
+            <div key={activeTab} className="animate-in fade-in duration-300">
               {activeTab === 'map' && <LocationMap deviceId={deviceId!} />}
               {activeTab === 'history' && <FallHistory deviceId={deviceId!} />}
-              {activeTab === 'analytics' && <CaregiverAnalytics deviceId={deviceId!} />}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
-              {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} />}
-              {activeTab === 'settings' && <UserSettings />}
+              {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} readOnly={readOnly} />}
+              {activeTab === 'settings' && !readOnly && <UserSettings />}
             </div>
-          </main>
+          </div>
+        </main>
       </div>
 
+      {/* Bottom navigation (phones) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t border-border grid grid-cols-4">
+        {NAV_ITEMS.map(({ tab, short, icon: Icon }) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            aria-current={activeTab === tab ? 'page' : undefined}
+            className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+              activeTab === tab ? 'text-primary' : 'text-muted-foreground'
+            }`}
+          >
+            <Icon className="size-5" />
+            {short}
+          </button>
+        ))}
+      </nav>
 
-
-      {/* ===== FULL-SCREEN EMERGENCY ALERT OVERLAY ===== */}
-      {hasAlert && (
+      {/* ===== FULL-SCREEN EMERGENCY ALERT OVERLAY (never in the admin read-only view) ===== */}
+      {hasAlert && !readOnly && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: 'emergencyPulse 2s ease-in-out infinite' }}>
           {/* Backdrop with pulsing red */}
           <div className="absolute inset-0 bg-gradient-to-b from-red-950/95 via-red-900/95 to-red-950/95 backdrop-blur-md" />

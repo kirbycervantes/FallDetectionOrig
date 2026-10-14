@@ -1,385 +1,300 @@
-
-import { useState, useEffect } from 'react';
-import {
-  Shield,
-  Clock,
-  Search,
-  MapPin,
-  ExternalLink,
-  Filter,
-  Calendar,
-  AlertTriangle,
-  CheckCircle,
-  Phone,
-  Download
-} from 'lucide-react';
-import { resolveEventTime } from '../../lib/time';
+import { useState, useEffect, useMemo } from 'react';
+import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff } from 'lucide-react';
+import { resolveEventTime, validDate } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
-import { query, orderByChild } from 'firebase/database';
 import { SkeletonList } from './ui/skeleton';
+import { eventKind, isCancelled, isStoppedQuietly, kindLabel, type EventKind } from '../../lib/events';
 
 interface FallEvent {
   id: string;
   timestamp: Date;
-  status: 'resolved' | 'pending' | 'emergency' | 'confirmed' | 'cancelled';
-  location: string | { lat?: number; lng?: number } | null;
-  responseTime?: string;
-  contactNotified?: string;
+  kind: EventKind;
+  cancelled: boolean;
+  quiet: boolean;
+  cancelledAt: Date | null;
+  offline: boolean;
+  location: unknown;
 }
 
 interface FallHistoryProps {
   deviceId: string;
 }
 
+type TypeFilter = 'all' | 'fall' | 'sos' | 'cancelled';
+type DateFilter = 'all' | 'today' | '7d' | '30d';
+
+const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'fall', label: 'Falls' },
+  { id: 'sos', label: 'Manual SOS' },
+  { id: 'cancelled', label: 'Cancelled' },
+];
+
+const DATE_FILTERS: { id: DateFilter; label: string }[] = [
+  { id: 'all', label: 'All time' },
+  { id: 'today', label: 'Today' },
+  { id: '7d', label: 'Last 7 days' },
+  { id: '30d', label: 'Last 30 days' },
+];
+
 // Convert Firebase location data into text React can safely display.
 function formatEventLocation(location: unknown): string {
-  if (location == null) {
-    return 'Location unavailable';
-  }
-
-  if (typeof location === 'string') {
-    return location;
-  }
-
+  if (location == null) return 'Location unavailable';
+  if (typeof location === 'string') return location;
   if (typeof location === 'object') {
-    const coordinates = location as {
-      lat?: unknown;
-      lng?: unknown;
-    };
-
-    if (
-      typeof coordinates.lat === 'number' &&
-      typeof coordinates.lng === 'number'
-    ) {
-      return `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`;
+    const c = location as { lat?: unknown; lng?: unknown };
+    if (typeof c.lat === 'number' && typeof c.lng === 'number' && !(c.lat === 0 && c.lng === 0)) {
+      return `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
     }
   }
-
   return 'Location unavailable';
 }
 
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 export function FallHistory({ deviceId }: FallHistoryProps) {
-  const [fallEvents, setFallEvents] = useState<FallEvent[]>([]);
+  const [events, setEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const PAGE_SIZE = 10;
 
   useEffect(() => {
-    const eventsRef = ref(db, `events/${deviceId}`);
-
     const unsubscribe = onValue(
-      eventsRef,
+      ref(db, `events/${deviceId}`),
       (snapshot) => {
-        if (snapshot.exists()) {
-          const eventsData = snapshot.val();
+        const data = snapshot.val() || {};
+        const parsed: FallEvent[] = Object.keys(data)
+          .filter((key) => data[key] && typeof data[key] === 'object')
+          .map((key) => {
+            const raw = data[key];
+            return {
+              id: key,
+              timestamp: resolveEventTime(key, raw.timestamp),
+              kind: eventKind(raw),
+              cancelled: isCancelled(raw),
+              quiet: isStoppedQuietly(raw),
+              cancelledAt: validDate(raw.cancelledAt),
+              offline: raw.offline === true,
+              location: raw.location ?? null,
+            };
+          })
+          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-          const parsedEvents: FallEvent[] = Object.keys(eventsData)
-            .map((key) => {
-              const eventData = eventsData[key];
-
-              return {
-                id: key,
-                timestamp: resolveEventTime(key, eventData.timestamp),
-                status: eventData.status || 'pending',
-                location: eventData.location ?? null,
-                responseTime: eventData.responseTime,
-                contactNotified: eventData.contactNotified
-              };
-            })
-            .sort(
-              (a, b) =>
-                b.timestamp.getTime() - a.timestamp.getTime()
-            );
-
-          setFallEvents((prev) => {
-            if (parsedEvents.length > prev.length) setPage(1);
-            return parsedEvents;
-          });
-        } else {
-          setFallEvents([]);
-        }
-
+        setEvents((prev) => {
+          if (parsed.length > prev.length) setPage(1);
+          return parsed;
+        });
         setLoading(false);
       },
       (error) => {
         console.error('Error loading fall history:', error);
-        setFallEvents([]);
+        setEvents([]);
         setLoading(false);
       }
     );
-
     return () => unsubscribe();
   }, [deviceId]);
+
+  const filtered = useMemo(() => {
+    const today = startOfToday();
+    const minTime =
+      dateFilter === 'today' ? today :
+      dateFilter === '7d' ? today - 6 * 86400000 :
+      dateFilter === '30d' ? today - 29 * 86400000 :
+      0;
+    return events.filter((e) => {
+      if (e.timestamp.getTime() < minTime) return false;
+      if (typeFilter === 'cancelled') return e.cancelled;
+      if (typeFilter === 'fall') return e.kind === 'fall' && !e.cancelled;
+      if (typeFilter === 'sos') return e.kind === 'sos' && !e.cancelled;
+      return true;
+    });
+  }, [events, typeFilter, dateFilter]);
+
+  // reset to page 1 when a filter changes
+  useEffect(() => setPage(1), [typeFilter, dateFilter]);
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold mb-1 text-foreground">
-            Incident History
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Historical log of all recorded events
-          </p>
+          <h2 className="text-2xl font-semibold mb-1 text-foreground">Incident History</h2>
+          <p className="text-sm text-muted-foreground">Historical log of all recorded events</p>
         </div>
-
         <SkeletonList items={5} />
       </div>
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(fallEvents.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
-  const pageEvents = fallEvents.slice(pageStart, pageStart + PAGE_SIZE);
-  const latestId = fallEvents[0]?.id;
   const now = new Date();
-  const thisMonthCount = fallEvents.filter(
+  const totalFalls = events.filter((e) => e.kind === 'fall' && !e.cancelled).length;
+  const totalSos = events.filter((e) => e.kind === 'sos' && !e.cancelled).length;
+  const thisMonth = events.filter(
     (e) =>
-      e.status !== 'cancelled' &&
+      !e.cancelled &&
       e.timestamp.getMonth() === now.getMonth() &&
       e.timestamp.getFullYear() === now.getFullYear()
   ).length;
   const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageEvents = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const latestId = events[0]?.id;
+
+  const typeCount = (id: TypeFilter) =>
+    id === 'all' ? events.length :
+    id === 'cancelled' ? events.filter((e) => e.cancelled).length :
+    events.filter((e) => e.kind === id && !e.cancelled).length;
+
   return (
     <div className="space-y-6">
-      {/* Header with Export */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold mb-1 text-foreground">
-            Incident History
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Comprehensive fall detection records
-          </p>
-        </div>
-
-        <button
-          onClick={() => {
-            const csvRows = [
-              [
-                'ID',
-                'Timestamp',
-                'Status',
-                'Location',
-                'Response Time',
-                'Contact Notified'
-              ],
-              ...fallEvents.map((event) => [
-                event.id,
-                event.timestamp.toISOString(),
-                event.status,
-                formatEventLocation(event.location),
-                event.responseTime || '',
-                event.contactNotified || ''
-              ])
-            ];
-
-            const escapeCsv = (value: string) =>
-              `"${value.replace(/"/g, '""')}"`;
-
-            const csvContent =
-              '\uFEFF' +
-              csvRows.map((row) => row.map((value) =>
-                escapeCsv(String(value))
-              ).join(',')).join('\n');
-
-            const blob = new Blob([csvContent], {
-              type: 'text/csv;charset=utf-8;'
-            });
-
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-
-            link.href = url;
-            link.download = `carebeacon_report_${new Date()
-              .toISOString()
-              .split('T')[0]}.csv`;
-
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border hover:border-primary/50 hover:bg-muted rounded-xl transition text-foreground font-medium text-sm shadow-sm"
-        >
-          <Download className="size-4" />
-          <span>Export Report</span>
-        </button>
+      <div>
+        <h2 className="text-2xl font-semibold mb-1 text-foreground">Incident History</h2>
+        <p className="text-sm text-muted-foreground">Every fall, Manual SOS and cancelled alert from the wearable</p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div className="p-3 bg-success/10 rounded-xl">
-              <CheckCircle className="size-6 text-success" />
+      {/* Summary (no icons) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Total Falls', value: totalFalls, note: 'All time' },
+          { label: 'Manual SOS', value: totalSos, note: 'All time' },
+          { label: 'This Month', value: thisMonth, note: monthLabel },
+        ].map((card) => (
+          <div key={card.label} className="bg-card border border-border rounded-2xl px-5 py-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-sm text-muted-foreground">{card.label}</p>
+              <span className="text-[11px] px-2 py-0.5 bg-muted text-muted-foreground rounded-md">{card.note}</span>
             </div>
-            <span className="text-xs px-2 py-1 bg-success/10 text-success rounded-lg font-medium">
-              All Time
-            </span>
+            <p className="text-3xl font-bold text-foreground">{card.value}</p>
           </div>
-
-          <p className="text-3xl font-bold mb-1 text-foreground">
-            {fallEvents.filter((event) => event.status !== 'cancelled').length}
-          </p>
-          <p className="text-sm text-muted-foreground">Total Falls</p>
-        </div>
-
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div className="p-3 bg-primary/10 rounded-xl">
-              <Clock className="size-6 text-primary" />
-            </div>
-            <span className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-lg font-medium">
-              Average
-            </span>
-          </div>
-
-          <p className="text-3xl font-bold mb-1 text-foreground">5 min</p>
-          <p className="text-sm text-muted-foreground">Response Time</p>
-        </div>
-
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div className="p-3 bg-destructive/10 rounded-xl">
-              <AlertTriangle className="size-6 text-destructive" />
-            </div>
-            <span className="text-xs px-2 py-1 bg-destructive/10 text-destructive rounded-lg font-medium">
-              {monthLabel}
-            </span>
-          </div>
-
-          <p className="text-3xl font-bold mb-1 text-foreground">{thisMonthCount}</p>
-          <p className="text-sm text-muted-foreground">This Month</p>
-        </div>
+        ))}
       </div>
 
       {/* Timeline */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-foreground">
-            Event Timeline
-          </h3>
-          {fallEvents.length > 0 && (
+      <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-foreground">Event Timeline</h3>
             <span className="text-sm text-muted-foreground">
-              Newest first • {fallEvents.length} total
+              {filtered.length} of {events.length}
             </span>
-          )}
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
+              {TYPE_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setTypeFilter(f.id)}
+                  aria-pressed={typeFilter === f.id}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    typeFilter === f.id
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-foreground hover:bg-muted'
+                  }`}
+                >
+                  {f.label} <span className="opacity-70">({typeCount(f.id)})</span>
+                </button>
+              ))}
+            </div>
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+              aria-label="Filter by date"
+              className="sm:ml-auto px-3 py-1.5 rounded-lg border border-border bg-card text-sm text-foreground"
+            >
+              {DATE_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          {pageEvents.map((event, index) => (
-            <div key={event.id} className="relative group">
-              {/* Connector line */}
-              {index < pageEvents.length - 1 && (
-                <div className="absolute left-[22px] top-12 bottom-0 w-px bg-border" />
-              )}
+        <div className="space-y-3">
+          {pageEvents.map((event) => {
+            const tone = event.cancelled
+              ? { box: 'bg-muted', icon: 'text-muted-foreground', badge: 'bg-muted text-muted-foreground' }
+              : event.kind === 'sos'
+              ? { box: 'bg-warning/10', icon: 'text-warning', badge: 'bg-warning/10 text-warning' }
+              : { box: 'bg-destructive/10', icon: 'text-destructive', badge: 'bg-destructive/10 text-destructive' };
+            const Icon = event.cancelled ? XCircle : event.kind === 'sos' ? Hand : AlertTriangle;
+            const badge = event.cancelled
+              ? (event.quiet ? 'Cancelled (no SMS)' : 'Cancelled')
+              : event.kind === 'sos' ? 'Manual SOS' : 'Fall';
 
-              <div className={`relative bg-background border rounded-xl p-5 hover:border-primary/30 transition-all duration-200 hover:shadow-sm ${event.id === latestId ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}>
-                <div className="flex items-start gap-4">
-                  {/* Status Icon */}
-                  <div
-                    className={`relative flex-shrink-0 p-2.5 rounded-lg ${
-                      event.status === 'resolved'
-                        ? 'bg-success/10'
-                        : event.status === 'confirmed'
-                        ? 'bg-primary/10'
-                        : event.status === 'cancelled'
-                        ? 'bg-muted'
-                        : event.status === 'pending'
-                        ? 'bg-warning/10'
-                        : 'bg-destructive/10'
-                    }`}
-                  >
-                    {event.status === 'resolved' ? (
-                      <CheckCircle className="size-5 text-success" />
-                    ) : event.status === 'confirmed' ? (
-                      <CheckCircle className="size-5 text-primary" />
-                    ) : event.status === 'cancelled' ? (
-                      <AlertTriangle className="size-5 text-muted-foreground" />
-                    ) : event.status === 'pending' ? (
-                      <Clock className="size-5 text-warning" />
-                    ) : (
-                      <AlertTriangle className="size-5 text-destructive" />
-                    )}
+            return (
+              <div
+                key={event.id}
+                className={`bg-background border rounded-xl p-4 md:p-5 transition-colors hover:border-primary/30 ${
+                  event.id === latestId ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'
+                }`}
+              >
+                <div className="flex items-start gap-3 md:gap-4">
+                  <div className={`shrink-0 p-2.5 rounded-lg ${tone.box}`}>
+                    <Icon className={`size-5 ${tone.icon}`} />
                   </div>
 
-                  {/* Content */}
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-semibold mb-1 text-foreground flex items-center gap-2">
-                          Fall Detected
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold mb-0.5 text-foreground flex flex-wrap items-center gap-2">
+                          {kindLabel(event.kind)}
+                          {event.cancelled && <span className="text-muted-foreground font-normal">- cancelled</span>}
                           {event.id === latestId && (
                             <span className="px-2 py-0.5 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wide">
                               Latest
                             </span>
                           )}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                          {event.timestamp.toLocaleString()}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{event.timestamp.toLocaleString()}</p>
                       </div>
-
-                      <span
-                        className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                          event.status === 'resolved'
-                            ? 'bg-success/10 text-success'
-                            : event.status === 'confirmed'
-                            ? 'bg-primary/10 text-primary'
-                            : event.status === 'cancelled'
-                            ? 'bg-muted text-muted-foreground'
-                            : event.status === 'pending'
-                            ? 'bg-warning/10 text-warning'
-                            : 'bg-destructive/10 text-destructive'
-                        }`}
-                      >
-                        {event.status.charAt(0).toUpperCase() +
-                          event.status.slice(1)}
+                      <span className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${tone.badge}`}>
+                        {badge}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
-                        <MapPin className="size-4 text-muted-foreground flex-shrink-0" />
-                        <span className="text-xs text-foreground truncate">
-                          {formatEventLocation(event.location)}
-                        </span>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg min-w-0">
+                        <MapPin className="size-4 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-foreground truncate">{formatEventLocation(event.location)}</span>
                       </div>
-
-                      {event.responseTime && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
-                          <Clock className="size-4 text-muted-foreground flex-shrink-0" />
+                      {event.cancelled && event.cancelledAt && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
+                          <XCircle className="size-4 text-muted-foreground shrink-0" />
                           <span className="text-xs text-foreground">
-                            {event.responseTime}
+                            Cancelled at {event.cancelledAt.toLocaleTimeString()}
                           </span>
                         </div>
                       )}
-
-                      {event.contactNotified && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
-                          <Phone className="size-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-xs text-foreground truncate">
-                            {event.contactNotified}
-                          </span>
+                      {event.offline && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
+                          <CloudOff className="size-4 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-foreground">Happened offline, uploaded later</span>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {fallEvents.length > PAGE_SIZE && (
+        {filtered.length > PAGE_SIZE && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 pt-4 border-t border-border">
             <span className="text-sm text-muted-foreground">
-              Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, fallEvents.length)} of {fallEvents.length}
+              Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center justify-center gap-1">
               <button
                 onClick={() => setPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
@@ -387,19 +302,9 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
               >
                 Previous
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setPage(n)}
-                  className={`min-w-9 px-3 py-1.5 rounded-lg text-sm border ${
-                    n === currentPage
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border text-foreground hover:bg-muted'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
+              <span className="px-3 py-1.5 text-sm text-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
               <button
                 onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
@@ -411,16 +316,16 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
           </div>
         )}
 
-        {fallEvents.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-16">
             <div className="inline-flex p-6 bg-muted rounded-2xl mb-4">
               <CheckCircle className="size-12 text-muted-foreground" />
             </div>
             <p className="text-foreground font-medium">
-              No incidents recorded
+              {events.length === 0 ? 'No incidents recorded' : 'No events match this filter'}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              All systems operational
+              {events.length === 0 ? 'All systems operational' : 'Try another type or date range'}
             </p>
           </div>
         )}

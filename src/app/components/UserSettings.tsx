@@ -8,6 +8,8 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from 'firebase/auth';
+import { useConfirm } from './ui/confirm-dialog';
+import { removePhoneIndex, savePhoneIndex } from '../../lib/phoneIndex';
 
 export function UserSettings() {
   // Email
@@ -50,6 +52,8 @@ export function UserSettings() {
   const [deleteAccountMsg, setDeleteAccountMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [familyId, setFamilyId] = useState<string | null>(null);
+  const [currentPhone, setCurrentPhone] = useState<string>('');
+  const [confirm, confirmDialog] = useConfirm();
 
   const user = auth.currentUser;
 
@@ -59,6 +63,7 @@ export function UserSettings() {
       const unsub = onValue(userRef, (snapshot) => {
         if (snapshot.exists()) {
           setFamilyId(snapshot.val().familyId || null);
+          setCurrentPhone(snapshot.val().phone || '');
         }
       });
       return () => unsub();
@@ -80,6 +85,23 @@ export function UserSettings() {
       }
       return;
     }
+
+    const ok = await confirm(
+      isDeletionRequest
+        ? {
+            title: 'Send deletion request?',
+            message: 'The administrator will be asked to remove your caregiver account from this family. You will lose access to the dashboard once it is approved.',
+            confirmLabel: 'Send Request',
+            tone: 'danger',
+          }
+        : {
+            title: 'Submit this ticket?',
+            message: <>Subject: <strong className="text-foreground">{subject}</strong><br />The administrator will see your message and email address.</>,
+            confirmLabel: 'Submit Ticket',
+            icon: <Ticket className="size-6" />,
+          }
+    );
+    if (!ok) return;
 
     if (isDeletionRequest) setDeleteAccountLoading(true);
     else setTicketLoading(true);
@@ -126,6 +148,14 @@ export function UserSettings() {
       return;
     }
 
+    const ok = await confirm({
+      title: 'Change your email?',
+      message: <>A verification link will be sent to <strong className="text-foreground">{newEmail.trim()}</strong>. Your login email changes only after you open that link.</>,
+      confirmLabel: 'Send Link',
+      icon: <Mail className="size-6" />,
+    });
+    if (!ok) return;
+
     setEmailLoading(true);
     setEmailMsg(null);
     try {
@@ -154,10 +184,21 @@ export function UserSettings() {
       return;
     }
 
+    const ok = await confirm({
+      title: 'Change your phone number?',
+      message: <>{currentPhone ? <>From <strong className="text-foreground">{currentPhone}</strong> to </> : <>New number: </>}<strong className="text-foreground">{newPhone.trim()}</strong></>,
+      confirmLabel: 'Update Number',
+      icon: <Phone className="size-6" />,
+    });
+    if (!ok) return;
+
     setPhoneLoading(true);
     setPhoneMsg(null);
     try {
       await update(ref(db, `users/${user.uid}`), { phone: newPhone.trim() });
+      // keep "Forgot password -> use phone number" pointing at this account
+      if (currentPhone && currentPhone !== newPhone.trim()) await removePhoneIndex(currentPhone);
+      await savePhoneIndex(newPhone.trim(), user.uid, user.email);
       setPhoneMsg({ type: 'success', text: 'Phone number updated successfully.' });
       setNewPhone('');
     } catch (err: any) {
@@ -256,6 +297,10 @@ export function UserSettings() {
           <div className="p-4 bg-muted border border-border rounded-xl">
             <p className="text-xs text-muted-foreground mb-1">Display Name</p>
             <p className="text-sm font-medium text-foreground">{user?.displayName || user?.email?.split('@')[0] || '—'}</p>
+          </div>
+          <div className="p-4 bg-muted border border-border rounded-xl">
+            <p className="text-xs text-muted-foreground mb-1">Phone Number</p>
+            <p className="text-sm font-medium text-foreground">{currentPhone || '—'}</p>
           </div>
         </div>
       </div>
@@ -636,6 +681,8 @@ export function UserSettings() {
           </div>
         </div>
       )}
+
+      {confirmDialog}
     </div>
   );
 }

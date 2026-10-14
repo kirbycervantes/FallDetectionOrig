@@ -9,6 +9,7 @@ import { db, ref, onValue, update } from '../lib/db';
 import { Shield, Clock, LogOut, AlertOctagon } from 'lucide-react';
 import { requestNotificationPermission } from '../lib/messaging';
 import { SkeletonPage } from './components/ui/skeleton';
+import { savePhoneIndex } from '../lib/phoneIndex';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -75,6 +76,21 @@ export default function App() {
       if (typeof statusUnsubscribe === 'function') statusUnsubscribe();
       if (typeof roleUnsubscribe === 'function') roleUnsubscribe();
     };
+  }, [user]);
+
+  // Keep phoneIndex/{phone} -> this account up to date, so "Forgot password ->
+  // use my phone number" can find the account (also fills it in for older accounts).
+  useEffect(() => {
+    if (!user) return;
+    let lastSaved = '';
+    const unsub = onValue(ref(db, `users/${user.uid}/phone`), (snap: any) => {
+      const phone = snap.val();
+      if (phone && phone !== lastSaved) {
+        lastSaved = phone;
+        savePhoneIndex(phone, user.uid, user.email);
+      }
+    }, () => { /* no access yet - ignore */ });
+    return () => unsub();
   }, [user]);
 
   const handleLogout = async () => {

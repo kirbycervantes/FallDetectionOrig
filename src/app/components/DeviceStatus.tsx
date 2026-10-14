@@ -1,165 +1,182 @@
-import { useState, useEffect } from 'react';
-import { Battery, Wifi, Radio, Activity, Clock, MapPin, Cpu, Signal, Zap } from 'lucide-react';
+import { useState, useEffect, type ReactNode } from 'react';
+import { Clock, MapPin, Cpu, Signal, Wifi } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonCard } from './ui/skeleton';
-import { BatteryPanel } from './BatteryPanel';
-import { validDate } from '../../lib/time';
+import { formatDuration, isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 
 interface DeviceStatusProps {
   deviceId: string;
 }
 
+/** WiFi RSSI (dBm) -> 0..4 bars */
+function wifiBars(rssi: number) {
+  if (rssi >= -55) return 4;
+  if (rssi >= -67) return 3;
+  if (rssi >= -75) return 2;
+  if (rssi >= -85) return 1;
+  return 0;
+}
+
+/** SIM800L AT+CSQ value (0-31, 99 = unknown) -> 0..4 bars */
+function gsmBars(csq: number) {
+  if (csq >= 20) return 4;
+  if (csq >= 15) return 3;
+  if (csq >= 10) return 2;
+  if (csq >= 2) return 1;
+  return 0;
+}
+
+const BAR_LABEL = ['No signal', 'Weak', 'Fair', 'Good', 'Excellent'];
+
+function Bars({ value }: { value: number }) {
+  return (
+    <span className="inline-flex items-end gap-0.5 h-4" aria-hidden="true">
+      {[1, 2, 3, 4].map((b) => (
+        <span
+          key={b}
+          className={`w-1 rounded-full ${b <= value ? 'bg-success' : 'bg-border'}`}
+          style={{ height: `${b * 3 + 4}px` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function Tile({ icon, label, children, sub }: { icon: ReactNode; label: string; children: ReactNode; sub?: ReactNode }) {
+  return (
+    <div className="flex items-start gap-4 p-4 bg-muted border border-border rounded-xl">
+      <div className="p-2.5 bg-primary/10 rounded-lg text-primary shrink-0">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+        <div className="text-sm font-semibold text-foreground">{children}</div>
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function DeviceStatus({ deviceId }: DeviceStatusProps) {
-  const [deviceData, setDeviceData] = useState<any>(null);
+  const [device, setDevice] = useState<any>(undefined);
+  const now = useNow(1000); // uptime ticks every second
 
   useEffect(() => {
-    const deviceRef = ref(db, `devices/${deviceId}`);
-    const unsubscribe = onValue(deviceRef, (snapshot) => {
-      setDeviceData(snapshot.val());
+    const unsubscribe = onValue(ref(db, `devices/${deviceId}`), (snapshot) => {
+      setDevice(snapshot.val() ?? null);
     });
     return () => unsubscribe();
   }, [deviceId]);
 
-  if (!deviceData) {
+  if (device === undefined) {
     return (
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-semibold mb-1 text-foreground">System Diagnostics</h2>
           <p className="text-sm text-muted-foreground">Real-time hardware monitoring</p>
         </div>
-        <div className="grid md:grid-cols-2 gap-6">
-          <SkeletonCard />
-          <SkeletonCard />
+        <div className="grid md:grid-cols-2 gap-4">
           <SkeletonCard />
           <SkeletonCard />
         </div>
       </div>
     );
   }
-  const getBatteryColor = (level: number) => {
-    if (level > 50) return 'emerald';
-    if (level > 20) return 'amber';
-    return 'red';
-  };
-  
-  const batteryColor = getBatteryColor(deviceData.battery);
-  
+
+  const online = isDeviceOnline(device, now);
+  const seen = lastSeen(device);
+
+  // Uptime = what the hub reported + time since that report (only while online)
+  const reportedUptime = Number(device?.uptime);
+  const uptimeMs =
+    online && Number.isFinite(reportedUptime) && seen
+      ? reportedUptime + Math.max(0, now - seen.getTime())
+      : null;
+
+  const wifiRssi = Number(device?.wifiRssi);
+  const hasWifi = Number.isFinite(wifiRssi) && wifiRssi < 0;
+  const gsmCsq = Number(device?.gsmSignal);
+  const hasGsm = Number.isFinite(gsmCsq) && gsmCsq >= 0 && gsmCsq <= 31;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold mb-1 text-foreground">System Diagnostics</h2>
-        <p className="text-sm text-muted-foreground">Real-time hardware monitoring</p>
+        <p className="text-sm text-muted-foreground">
+          Live data from the central hub • {online ? 'updated every 10 s' : `hub offline, last seen ${timeAgo(seen, now)}`}
+        </p>
       </div>
-      
-      {/* Primary Status Cards */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Connection Status */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Network Status</p>
-              <p className="text-3xl font-bold capitalize text-foreground">{deviceData.status}</p>
-            </div>
-            <div className="p-3 bg-success/10 rounded-xl">
-              <Wifi className="size-8 text-success" />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 pt-4 border-t border-border">
-            <Clock className="size-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              Last seen: {validDate(deviceData.lastUpdate)?.toLocaleString() ?? 'Just now'}
-            </span>
-          </div>
-          
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Signal Strength</span>
-            <div className="flex gap-1 items-end h-5">
-              {[1, 2, 3, 4, 5].map((bar) => (
-                <div
-                  key={bar}
-                  className={`w-1 rounded-full ${
-                    bar <= 4 ? 'bg-success' : 'bg-muted'
-                  }`}
-                  style={{ height: `${bar * 3 + 2}px` }}
-                ></div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* Battery Status: Wearable + Central Hub */}
-        <BatteryPanel deviceId={deviceId} />
-      </div>
-      
-      {/* Technical Information Grid */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <h3 className="text-lg font-semibold mb-6 text-foreground">Technical Details</h3>
-        
+
+      <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+        <h3 className="text-lg font-semibold mb-4 text-foreground">Technical Details</h3>
+
         <div className="grid md:grid-cols-2 gap-4">
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-primary/10 rounded-lg">
-              <Cpu className="size-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">Device ID</p>
-              <p className="font-mono text-sm font-semibold text-foreground">ESP32-FD-001</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-primary/10 rounded-lg">
-              <Signal className="size-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">Network Type</p>
-              <p className="text-sm font-semibold text-foreground">GSM/GPRS</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-success/10 rounded-lg">
-              <Radio className="size-5 text-success" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">Signal Strength</p>
-              <p className="text-sm font-semibold text-success">Strong (4/5)</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-success/10 rounded-lg">
-              <MapPin className="size-5 text-success" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">GPS Status</p>
-              <p className="text-sm font-semibold text-success">Active</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-warning/10 rounded-lg">
-              <Zap className="size-5 text-warning" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">Firmware Version</p>
-              <p className="font-mono text-sm font-semibold text-foreground">v1.2.0</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4 p-4 bg-muted border border-border rounded-xl">
-            <div className="p-2.5 bg-primary/10 rounded-lg">
-              <Clock className="size-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground mb-1">System Uptime</p>
-              <p className="text-sm font-semibold text-foreground">12h 34m</p>
-            </div>
-          </div>
+          <Tile icon={<Cpu className="size-5" />} label="Device ID (serial number)">
+            <span className="font-mono">{deviceId}</span>
+          </Tile>
+
+          <Tile
+            icon={<Clock className="size-5" />}
+            label="System Uptime"
+            sub={uptimeMs === null ? `Last seen ${seen ? seen.toLocaleString() : 'never'}` : 'Since the hub was last switched on'}
+          >
+            {uptimeMs !== null ? formatDuration(uptimeMs) : online ? 'Not reported' : 'Hub offline'}
+          </Tile>
+
+          <Tile
+            icon={<MapPin className="size-5" />}
+            label="GPS Status"
+            sub={
+              !online
+                ? 'Shown when the hub is online'
+                : device?.gpsFix
+                ? 'Position is up to date'
+                : 'Searching for satellites (works best outdoors)'
+            }
+          >
+            {!online ? (
+              <span className="text-muted-foreground">Unknown</span>
+            ) : device?.gpsFix ? (
+              <span className="text-success">Fix acquired</span>
+            ) : (
+              <span className="text-warning">No fix</span>
+            )}
+          </Tile>
+
+          <Tile icon={<Signal className="size-5" />} label="Signal Strength">
+            {!online ? (
+              <span className="text-muted-foreground">Unknown (hub offline)</span>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Signal className="size-3.5 text-muted-foreground" />
+                  <span className="w-20 text-xs text-muted-foreground font-normal">Mobile (SIM)</span>
+                  {hasGsm ? (
+                    <>
+                      <Bars value={gsmBars(gsmCsq)} />
+                      <span>{BAR_LABEL[gsmBars(gsmCsq)]}</span>
+                      <span className="text-xs text-muted-foreground font-normal">({gsmCsq}/31)</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground font-normal">Not reported</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Wifi className="size-3.5 text-muted-foreground" />
+                  <span className="w-20 text-xs text-muted-foreground font-normal">WiFi</span>
+                  {hasWifi ? (
+                    <>
+                      <Bars value={wifiBars(wifiRssi)} />
+                      <span>{BAR_LABEL[wifiBars(wifiRssi)]}</span>
+                      <span className="text-xs text-muted-foreground font-normal">({wifiRssi} dBm)</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground font-normal">Not reported</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </Tile>
         </div>
       </div>
-
-
     </div>
   );
 }
