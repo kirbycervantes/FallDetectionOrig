@@ -1,11 +1,5 @@
 {
   "rules": {
-    "phoneIndex": {
-      "$phone": {
-        ".read": "true",
-        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid) && (!newData.exists() || newData.child('uid').val() === auth.uid)"
-      }
-    },
     "users": {
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",

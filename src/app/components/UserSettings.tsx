@@ -9,7 +9,7 @@ import {
   EmailAuthProvider,
 } from 'firebase/auth';
 import { useConfirm } from './ui/confirm-dialog';
-import { normalizePhone, removePhoneIndex, savePhoneIndex } from '../../lib/phoneIndex';
+import { normalizePhone } from '../../lib/phone';
 
 // "+63" is fixed; the user types the 10 digits after it (9XX XXX XXXX).
 const PHONE_ERROR = 'Enter the 10 digits after +63, starting with 9 (e.g., +63 912 345 6789).';
@@ -218,9 +218,6 @@ export function UserSettings() {
     setPhoneMsg(null);
     try {
       await update(ref(db, `users/${user.uid}`), { phone: phoneToSave });
-      // keep "Forgot password -> use phone number" pointing at this account
-      if (currentPhone && normalizePhone(currentPhone) !== phoneToSave) await removePhoneIndex(currentPhone);
-      await savePhoneIndex(phoneToSave, user.uid, user.email);
       setPhoneMsg({ type: 'success', text: 'Phone number updated successfully.' });
       setNewPhone('');
     } catch (err: any) {
