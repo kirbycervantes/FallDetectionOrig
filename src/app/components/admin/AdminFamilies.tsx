@@ -294,15 +294,6 @@ export function AdminFamilies() {
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-3">
                           <button
-                            onClick={() => {
-                              setViewFamily(family);
-                              setShowViewModal(true);
-                            }}
-                            className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
-                          >
-                            View
-                          </button>
-                          <button
                             onClick={() => handleToggleSuspend(family)}
                             className={`font-medium text-sm transition-colors ${
                               family.accountStatus === 'active'

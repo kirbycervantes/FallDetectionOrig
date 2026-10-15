@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff } from 'lucide-react';
+import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw } from 'lucide-react';
 import { resolveEventTime, validDate } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonList } from './ui/skeleton';
@@ -62,6 +62,16 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Clears the filters and goes back to the first page (events themselves are already live)
+  const handleRefresh = () => {
+    setTypeFilter('all');
+    setDateFilter('all');
+    setPage(1);
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
   const PAGE_SIZE = 10;
 
   useEffect(() => {
@@ -216,6 +226,16 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
                 <option key={f.id} value={f.id}>{f.label}</option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              aria-label="Refresh and reset filters"
+              title="Refresh and reset filters"
+              className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-sm text-foreground hover:bg-muted transition-colors"
+            >
+              <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
         </div>
 
