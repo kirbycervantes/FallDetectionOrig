@@ -109,7 +109,7 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
         <h3 className="text-lg font-semibold mb-4 text-foreground">Technical Details</h3>
 
         <div className="grid md:grid-cols-2 gap-4">
-          <Tile icon={<Cpu className="size-5" />} label="Device ID (serial number)">
+          <Tile icon={<Cpu className="size-5" />} label="Device ID (MAC address)">
             <span className="font-mono">{deviceId}</span>
           </Tile>
 

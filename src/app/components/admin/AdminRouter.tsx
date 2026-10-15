@@ -5,7 +5,6 @@ import { AdminReview } from './AdminReview';
 import { AdminDevices } from './AdminDevices';
 import { AdminIncidents } from './AdminIncidents';
 import { AdminAlertDelivery } from './AdminAlertDelivery';
-import { AdminTickets } from './AdminTickets';
 import { AdminSettings } from './AdminSettings';
 import { AdminAnalytics } from './AdminAnalytics';
 import { AdminImpersonate } from './AdminImpersonate';
@@ -19,7 +18,6 @@ export function AdminRouter() {
       <Route path="/devices" element={<AdminDevices />} />
       <Route path="/incidents" element={<AdminIncidents />} />
       <Route path="/alert-delivery" element={<AdminAlertDelivery />} />
-      <Route path="/tickets" element={<AdminTickets />} />
       <Route path="/settings" element={<AdminSettings />} />
       <Route path="/analytics" element={<AdminAnalytics />} />
       <Route path="/family/:id" element={<AdminImpersonate />} />

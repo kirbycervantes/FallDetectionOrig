@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
+import { Users, Wifi, Send, AlertTriangle, Hand, XCircle } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { resolveEventTime } from "../../../lib/time";
+import { useNow } from "../../../lib/deviceStatus";
+import { eventKind, isCancelled, type EventKind } from "../../../lib/events";
 import { familyDeviceId, personName, batteryLevels, deviceState } from "./adminData";
+import { buildRows } from "./deliveryModel";
 
 interface Family {
   id: string;
@@ -16,25 +20,44 @@ interface Family {
   createdAt: string;
 }
 
+type IncidentKind = EventKind | "cancelled";
+
 interface Incident {
   id: string;
-  type: string;
+  kind: IncidentKind;
   person: string;
   time: string;
-  statusText: string;
-  typeColor: string;
   timestamp: Date;
 }
+
+const KIND_UI: Record<IncidentKind, { label: string; Icon: typeof AlertTriangle; box: string }> = {
+  fall: { label: "Fall detected", Icon: AlertTriangle, box: "bg-destructive/10 text-destructive" },
+  sos: { label: "Manual SOS", Icon: Hand, box: "bg-warning/10 text-warning" },
+  cancelled: { label: "Cancelled", Icon: XCircle, box: "bg-muted text-muted-foreground" },
+};
+
+const FILTERS: { id: "all" | IncidentKind; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "fall", label: "Fall" },
+  { id: "sos", label: "Manual SOS" },
+  { id: "cancelled", label: "Cancelled" },
+];
 
 export function AdminDashboard() {
   const [families, setFamilies] = useState<Family[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incidentFilter, setIncidentFilter] = useState<"all" | IncidentKind>("all");
   const [stats, setStats] = useState({
     totalFamilies: 0,
     devicesOnline: 0,
     totalDevices: 0,
-    openIncidents: 0,
+    alertsTotal: 0,
+    alertsDelivered: 0,
   });
+
+  const now = useNow(5000);
+  const nowRef = useRef(now);
+  nowRef.current = now;
 
   useEffect(() => {
     let currentFamilies: any = {};
@@ -60,7 +83,7 @@ export function AdminDashboard() {
           const levels = batteryLevels(device);
           wearable = `${Math.round(levels.wearable)}%`;
           hub = `${Math.round(levels.hub)}%`;
-          status = deviceState(device);
+          status = deviceState(device, nowRef.current);
           // count each physical device once, even if linked to several families
           if (!seenDevices.has(deviceId)) {
             seenDevices.add(deviceId);
@@ -84,7 +107,6 @@ export function AdminDashboard() {
 
       // ---- Recent incidents ----
       const parsedIncidents: Incident[] = [];
-      let openCount = 0;
 
       Object.keys(currentEvents).forEach(deviceId => {
         const deviceEvents = currentEvents[deviceId] || {};
@@ -95,55 +117,33 @@ export function AdminDashboard() {
           const ev = deviceEvents[eventId];
           if (!ev || typeof ev !== 'object') return;
 
-          if (ev.status === 'pending' || ev.status === 'emergency' || ev.status === 'unconfirmed') {
-            openCount++;
-          }
-
-          let typeColor = "bg-primary/15";
-          let typeText = "Event";
-
-          if (ev.status === 'pending' || ev.status === 'unconfirmed') {
-            typeColor = "bg-destructive/15";
-            typeText = "Fall detected (Unconfirmed)";
-          } else if (ev.status === 'emergency') {
-            typeColor = "bg-warning/15";
-            typeText = "SOS Button Pressed";
-          } else if (ev.status === 'confirmed') {
-            typeColor = "bg-destructive/15";
-            typeText = "Fall Confirmed";
-          } else if (ev.status === 'resolved') {
-            typeColor = "bg-success/15";
-            typeText = "Resolved";
-          } else if (ev.status === 'cancelled') {
-            typeColor = "bg-muted";
-            typeText = "Cancelled";
-          }
-
           // Device writes millis() uptime as timestamp -> use the real time from the Firebase key
           const when = resolveEventTime(eventId, ev.timestamp);
 
           parsedIncidents.push({
             id: `${deviceId}-${eventId}`,
-            type: typeText,
+            kind: isCancelled(ev) ? "cancelled" : eventKind(ev),
             person,
             time: when.toLocaleString(),
             timestamp: when,
-            statusText: ev.contactNotified ? `Notified: ${ev.contactNotified}` : '',
-            typeColor
           });
         });
       });
 
-      // Newest first, top 5
+      // Newest first
       parsedIncidents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
+      // ---- Alerts delivered: share of fall / SOS alerts whose SMS + call went out ----
+      const alertRows = buildRows(currentEvents, currentFamilies);
+
       setFamilies(parsedFamilies);
-      setIncidents(parsedIncidents.slice(0, 5));
+      setIncidents(parsedIncidents);
       setStats({
         totalFamilies: Object.keys(currentFamilies).length,
         devicesOnline: onlineCount,
         totalDevices: seenDevices.size,
-        openIncidents: openCount,
+        alertsTotal: alertRows.length,
+        alertsDelivered: alertRows.filter(r => r.delivered).length,
       });
     };
 
@@ -165,7 +165,10 @@ export function AdminDashboard() {
       unsubscribeDevices();
       unsubscribeEvents();
     };
-  }, []);
+  }, [now]);
+
+  const shownIncidents = incidents.filter(i => incidentFilter === "all" || i.kind === incidentFilter).slice(0, 5);
+  const deliveredPct = stats.alertsTotal ? Math.round((stats.alertsDelivered / stats.alertsTotal) * 100) : null;
 
   return (
     <AdminLayout>
@@ -177,22 +180,36 @@ export function AdminDashboard() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex flex-col gap-1 sm:gap-2 shadow-sm">
-            <span className="text-xs sm:text-sm text-muted-foreground">Families</span>
-            <span className="text-xl sm:text-2xl font-semibold">{stats.totalFamilies}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex items-center gap-4 shadow-sm">
+            <div className="p-3 bg-primary/10 text-primary rounded-xl">
+              <Users className="size-5 sm:size-6" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs sm:text-sm text-muted-foreground">Families</span>
+              <span className="text-xl sm:text-2xl font-semibold">{stats.totalFamilies}</span>
+            </div>
           </div>
-          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex flex-col gap-1 sm:gap-2 shadow-sm">
-            <span className="text-xs sm:text-sm text-muted-foreground">Devices online</span>
-            <span className="text-xl sm:text-2xl font-semibold">{stats.devicesOnline}/{stats.totalDevices}</span>
+          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex items-center gap-4 shadow-sm">
+            <div className="p-3 bg-success/10 text-success rounded-xl">
+              <Wifi className="size-5 sm:size-6" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs sm:text-sm text-muted-foreground">Devices online</span>
+              <span className="text-xl sm:text-2xl font-semibold">{stats.devicesOnline}/{stats.totalDevices}</span>
+            </div>
           </div>
-          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex flex-col gap-1 sm:gap-2 shadow-sm">
-            <span className="text-xs sm:text-sm text-muted-foreground">Open incidents</span>
-            <span className="text-xl sm:text-2xl font-semibold">{stats.openIncidents}</span>
-          </div>
-          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex flex-col gap-1 sm:gap-2 shadow-sm">
-            <span className="text-xs sm:text-sm text-muted-foreground">Alerts delivered</span>
-            <span className="text-xl sm:text-2xl font-semibold">100%</span>
+          <div className="bg-card p-4 sm:p-6 rounded-xl border border-border flex items-center gap-4 shadow-sm">
+            <div className="p-3 bg-primary/10 text-primary rounded-xl">
+              <Send className="size-5 sm:size-6" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs sm:text-sm text-muted-foreground">Alerts delivered</span>
+              <span className="text-xl sm:text-2xl font-semibold">{deliveredPct === null ? "—" : `${deliveredPct}%`}</span>
+              <span className="text-xs text-muted-foreground">
+                {stats.alertsTotal ? `${stats.alertsDelivered} of ${stats.alertsTotal} alerts` : "No alerts yet"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -209,7 +226,7 @@ export function AdminDashboard() {
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Person monitored</th>
-                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Device Serial</th>
+                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">MAC Address</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Wearable Battery</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Hub Battery</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Status</th>
@@ -242,34 +259,48 @@ export function AdminDashboard() {
 
         {/* Recent Incidents Panel */}
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="p-4 sm:p-6 border-b border-border">
+          <div className="p-4 sm:p-6 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 className="text-base sm:text-lg font-medium text-foreground">Recent incidents</h2>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter recent incidents">
+              {FILTERS.map(f => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setIncidentFilter(f.id)}
+                  aria-pressed={incidentFilter === f.id}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    incidentFilter === f.id
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-foreground border-border hover:bg-muted"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex flex-col">
-            {incidents.length === 0 ? (
+            {shownIncidents.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 No recent incidents
               </div>
             ) : (
-              incidents.map((incident) => (
-                <div key={incident.id} className="flex items-start gap-3 sm:gap-4 p-4 sm:p-6 hover:bg-muted/50 transition-colors border-b border-border last:border-0">
-                  <div className={`mt-1 size-3 rounded ${incident.typeColor} flex-shrink-0`} />
-                  <div className="flex flex-col">
-                    <div className="text-sm font-medium text-foreground">
-                      {incident.type} — <span className="font-normal text-muted-foreground">{incident.person}</span>
+              shownIncidents.map((incident) => {
+                const ui = KIND_UI[incident.kind];
+                return (
+                  <div key={incident.id} className="flex items-center gap-3 sm:gap-4 p-4 sm:p-6 hover:bg-muted/50 transition-colors border-b border-border last:border-0">
+                    <div className={`flex items-center justify-center size-9 rounded-xl shrink-0 ${ui.box}`}>
+                      <ui.Icon className="size-4" aria-hidden="true" />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                      <span>{incident.time}</span>
-                      {incident.statusText && (
-                        <>
-                          <span>&middot;</span>
-                          <span>{incident.statusText}</span>
-                        </>
-                      )}
+                    <div className="flex flex-col">
+                      <div className="text-sm font-medium text-foreground">
+                        {ui.label} — <span className="font-normal text-muted-foreground">{incident.person}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">{incident.time}</div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

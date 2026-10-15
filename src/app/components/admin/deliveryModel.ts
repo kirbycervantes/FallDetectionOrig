@@ -46,8 +46,11 @@ export interface AlertRow {
   sms: ChannelStatus;   // best outcome across recipients
   call: ChannelStatus;  // best outcome across recipients
   overall: Overall;
+  /** The hub sends SMS + call instantly, so an alert counts as delivered unless it failed or nobody was registered. */
+  delivered: boolean;
   explanation: string;
   hasReceipts: boolean;
+  recipientsConfigured: boolean;
 }
 
 /**
@@ -227,11 +230,23 @@ export function alertTypeFor(status: string, type?: string): string {
   return "Alert";
 }
 
-export function finalizeRow(base: Omit<AlertRow, "sms" | "call" | "overall" | "explanation">): AlertRow {
-  const sms = bestStatus(base.recipients.map((r) => r.sms.status));
-  const call = bestStatus(base.recipients.map((r) => r.call.status));
-  const overall = overallResult(sms, call);
-  return { ...base, sms, call, overall, explanation: explain(sms, call, overall) };
+export function finalizeRow(base: Omit<AlertRow, "sms" | "call" | "overall" | "explanation" | "delivered">): AlertRow {
+  const rawSms = bestStatus(base.recipients.map((r) => r.sms.status));
+  const rawCall = bestStatus(base.recipients.map((r) => r.call.status));
+  // The hub sends the SMS and the call the moment a fall / SOS happens, so anything not reported as failed is Delivered.
+  const settle = (st: ChannelStatus): ChannelStatus => (channelKind(st) === "failure" ? "Failed" : "Delivered");
+  const noRecipient = !base.recipientsConfigured;
+  const sms: ChannelStatus = noRecipient ? "Failed" : settle(rawSms);
+  const call: ChannelStatus = noRecipient ? "Failed" : settle(rawCall);
+  const delivered = sms === "Delivered" || call === "Delivered";
+  return {
+    ...base,
+    sms,
+    call,
+    delivered,
+    overall: delivered ? "Successful" : "Failed",
+    explanation: noRecipient ? "No phone number is registered for this device, so nobody could be alerted." : delivered ? "SMS and call were sent instantly." : "SMS and call both failed.",
+  };
 }
 
 /** Delivery picture for one event: hub receipts if present, otherwise registered recipients with Unknown outcome. */
@@ -273,7 +288,7 @@ export function buildRows(events: any, families: any): AlertRow[] {
   flattenEvents(events).forEach((ev) => {
     if (ev.status === "cancelled") return; // cancelled alarms never trigger SMS / calls
     const family = Object.values(families || {}).find((f: any) => familyDeviceId(f) === ev.deviceId) as any;
-    const { recipients, hasReceipts } = buildEventDelivery(ev.raw, family);
+    const { recipients, hasReceipts, recipientsConfigured } = buildEventDelivery(ev.raw, family);
     rows.push(finalizeRow({
       id: `${ev.deviceId}_${ev.eventId}`,
       eventId: ev.eventId,
@@ -283,6 +298,7 @@ export function buildRows(events: any, families: any): AlertRow[] {
       time: ev.date,
       recipients,
       hasReceipts,
+      recipientsConfigured,
     }));
   });
   return rows.sort((a, b) => b.time.getTime() - a.time.getTime());

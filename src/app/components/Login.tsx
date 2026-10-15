@@ -247,7 +247,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
       if (!inventorySnap.exists()) {
         setError(
-          'Unrecognized serial number. This device has not been provisioned by the administrator. Please verify the serial number on your CareBeacon device.'
+          'Unrecognized MAC address. This device has not been provisioned by the administrator. Please verify the MAC address on your CareBeacon device.'
         );
 
         console.error(
@@ -281,7 +281,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
       if (!deviceSnap.exists()) {
         setError(
-          'Device serial number not recognized. Please check the number and try again.'
+          'Device MAC address not recognized. Please check the address and try again.'
         );
 
         console.error(
@@ -1166,7 +1166,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
                       <div className="space-y-2 pt-2">
 
                         <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                          Device Serial Number
+                          Device MAC Address
                         </label>
 
                         <input

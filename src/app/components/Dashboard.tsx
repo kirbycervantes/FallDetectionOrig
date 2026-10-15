@@ -374,7 +374,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     e.preventDefault();
     setLinkError('');
     setLinkSuccess('');
-    if (!linkSerial.trim()) return setLinkError('Device Serial is required');
+    if (!linkSerial.trim()) return setLinkError('Device MAC Address is required');
     if (!linkPatient.trim()) return setLinkError('Patient Name is required');
     
     setLinkLoading(true);
@@ -421,7 +421,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
       const invSnap = await get(invRef);
       
       if (!invSnap.exists()) {
-        throw new Error('Invalid Device Serial Number or device not provisioned.');
+        throw new Error('Invalid Device MAC Address or device not provisioned.');
       }
       
       // 3. Create new family for this provisioned device
@@ -514,7 +514,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
           {!linkSuccess && (
             <form onSubmit={handleLinkDevice} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5">Device Serial Number</label>
+                <label className="block text-sm font-medium mb-1.5">Device MAC Address</label>
                 <input 
                   type="text" 
                   value={linkSerial}

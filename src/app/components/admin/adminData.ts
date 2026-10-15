@@ -1,5 +1,6 @@
 import { DEFAULT_LEVELS } from "../BatteryPanel";
 import { resolveEventTime } from "../../../lib/time";
+import { isDeviceOnline } from "../../../lib/deviceStatus";
 
 export function familyDeviceId(f: any): string | undefined {
   return f?.deviceId || f?.deviceSerialNumber || undefined;
@@ -20,8 +21,9 @@ export function batteryLevels(device: any) {
 
 export type DeviceState = "online" | "offline" | "low_battery";
 
-export function deviceState(device: any): DeviceState {
-  if (device?.status === 'offline') return 'offline';
+// Online = the hub sent a heartbeat in the last 60 s (same rule as the caregiver site)
+export function deviceState(device: any, now: number = Date.now()): DeviceState {
+  if (!isDeviceOnline(device, now)) return 'offline';
   const l = batteryLevels(device);
   return Math.min(l.wearable, l.hub) < 20 ? 'low_battery' : 'online';
 }

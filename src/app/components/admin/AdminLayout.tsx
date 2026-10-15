@@ -1,18 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { cn } from "../ui/utils";
 import { Menu, X, LogOut, ArrowLeft, Settings } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
-import { db, ref, onValue } from "../../../lib/db";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", section: "Overview" },
@@ -22,7 +13,6 @@ const navigation = [
   { name: "Devices", href: "/admin/devices", section: "Monitoring" },
   { name: "Incidents", href: "/admin/incidents", section: "Monitoring" },
   { name: "Alert delivery", href: "/admin/alert-delivery", section: "Monitoring" },
-  { name: "Tickets", href: "/admin/tickets", section: "Support" },
 ];
 
 
@@ -43,63 +33,34 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     await signOut(auth);
   };
 
-  const [familyCount, setFamilyCount] = useState<number | undefined>(undefined);
-  const [incidentAlertCount, setIncidentAlertCount] = useState<number | undefined>(undefined);
-  const [ticketCount, setTicketCount] = useState<number | undefined>(undefined);
+  const HeaderActions = () => (
+    <div className="flex items-center gap-2 shrink-0">
+      <Link
+        to="/admin/settings"
+        aria-label="Settings"
+        title="Settings"
+        className={cn(
+          "flex items-center justify-center size-10 rounded-xl border transition-colors",
+          location.pathname === "/admin/settings"
+            ? "bg-primary text-primary-foreground border-primary"
+            : "bg-card text-foreground border-border hover:bg-secondary"
+        )}
+      >
+        <Settings className="size-5" />
+      </Link>
+      <button
+        onClick={handleLogoutClick}
+        aria-label="Sign out"
+        title="Sign out"
+        className="flex items-center gap-2 h-10 px-3 rounded-xl border border-border bg-card text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors text-sm font-medium"
+      >
+        <LogOut className="size-4" />
+        <span className="hidden sm:inline">Sign out</span>
+      </button>
+    </div>
+  );
 
-  useEffect(() => {
-    const familiesRef = ref(db, 'families');
-    const eventsRef = ref(db, 'events');
-    const ticketsRef = ref(db, 'admin/tickets');
-
-    const unsubFamilies = onValue(familiesRef, (snapshot) => {
-      const data = snapshot.val();
-      setFamilyCount(data ? Object.keys(data).length : 0);
-    });
-
-    const unsubEvents = onValue(eventsRef, (snapshot) => {
-      const data = snapshot.val();
-      let count = 0;
-      if (data) {
-        Object.values(data).forEach((deviceEvents: any) => {
-          Object.values(deviceEvents).forEach((ev: any) => {
-            if (ev.status === 'pending' || ev.status === 'unconfirmed' || ev.status === 'emergency') {
-              count++;
-            }
-          });
-        });
-      }
-      setIncidentAlertCount(count > 0 ? count : undefined);
-    });
-
-    const unsubTickets = onValue(ticketsRef, (snapshot) => {
-      const data = snapshot.val();
-      let count = 0;
-      if (data) {
-        Object.values(data).forEach((ticket: any) => {
-          if (ticket.status === 'open' || ticket.status === 'in_progress') {
-            count++;
-          }
-        });
-      }
-      setTicketCount(count > 0 ? count : undefined);
-    });
-
-    return () => {
-      unsubFamilies();
-      unsubEvents();
-      unsubTickets();
-    };
-  }, []);
-
-  const dynamicNavigation = navigation.map(item => {
-    if (item.name === 'Families') return { ...item, count: familyCount };
-    if (item.name === 'Incidents') return { ...item, alert: incidentAlertCount };
-    if (item.name === 'Tickets') return { ...item, count: ticketCount };
-    return item;
-  });
-
-  const groupedNav = dynamicNavigation.reduce((acc, item) => {
+  const groupedNav = navigation.reduce((acc, item) => {
     if (!acc[item.section]) acc[item.section] = [];
     acc[item.section].push(item);
     return acc;
@@ -111,10 +72,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         {/* Header */}
         <div className="h-16 flex items-center justify-between px-6 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-8 rounded bg-primary text-primary-foreground font-semibold">
-              G
-            </div>
-            <span className="font-semibold text-foreground">Guardian admin</span>
+            <span className="font-semibold text-foreground">Admin</span>
           </div>
           {/* Close button for mobile */}
           <button
@@ -148,16 +106,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                         )}
                       >
                         <span>{item.name}</span>
-                        {item.count !== undefined && (
-                          <span className="text-xs text-muted-foreground">
-                            {item.count}
-                          </span>
-                        )}
-                        {item.alert !== undefined && (
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive/15 text-xs text-destructive">
-                            {item.alert}
-                          </span>
-                        )}
                       </Link>
                     </li>
                   );
@@ -190,38 +138,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </button>
           )}
           <div className="flex items-center gap-2 ml-3">
-            <div className="flex items-center justify-center size-7 rounded bg-primary text-primary-foreground font-semibold text-xs">
-              G
-            </div>
-            <span className="font-semibold text-foreground text-sm">Guardian admin</span>
+            <span className="font-semibold text-foreground text-sm">Admin</span>
           </div>
         </div>
-        {/* Mobile avatar dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <div className="flex items-center justify-center size-9 rounded-full bg-secondary text-primary font-medium cursor-pointer hover:bg-secondary/80 transition-colors text-sm">
-              A
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/admin/settings" className="cursor-pointer flex w-full items-center">
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogoutClick}
-              className="text-destructive focus:text-destructive cursor-pointer"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Sign Out</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <HeaderActions />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -257,32 +177,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </button>
             )}
           </div>
-          {/* Desktop avatar dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-center size-10 rounded-full bg-secondary text-primary font-medium cursor-pointer hover:bg-secondary/80 transition-colors">
-                A
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link to="/admin/settings" className="cursor-pointer flex w-full items-center">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleLogoutClick}
-                className="text-destructive focus:text-destructive cursor-pointer"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <HeaderActions />
         </div>
         {children}
       </main>
