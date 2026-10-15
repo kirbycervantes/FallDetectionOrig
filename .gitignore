@@ -27,3 +27,13 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Personal / hardware files (not for GitHub)
+Chapter 3*
+Fall Detection Enclosure.html
+_check.py
+_preview.glb
+_view2.py
+enclosure*
+wiring.py
+*.zip
