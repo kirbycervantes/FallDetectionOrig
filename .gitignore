@@ -37,3 +37,5 @@ _view2.py
 enclosure*
 wiring.py
 *.zip
+
+.vite
