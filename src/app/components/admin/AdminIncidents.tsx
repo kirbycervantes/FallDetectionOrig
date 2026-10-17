@@ -3,7 +3,7 @@ import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Search, Filter, CalendarDays, MapPin, MapPinOff } from "lucide-react";
+import { Search, Filter, CalendarDays } from "lucide-react";
 import { familyDeviceId, personName, flattenEvents } from "./adminData";
 import { buildRows, type AlertRow } from "./deliveryModel";
 
@@ -212,10 +212,8 @@ function DeliveryBadge({ state }: { state: DeliveryState }) {
 }
 
 function LocationCell({ loc }: { loc: Incident["location"] }) {
-  const Icon = loc.found ? MapPin : MapPinOff;
   return (
     <div className="flex min-w-0 items-start gap-1.5">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0">
         {loc.mapUrl ? (
           <a href={loc.mapUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline">
