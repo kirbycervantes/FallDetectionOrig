@@ -211,15 +211,6 @@ export function AdminFamilies() {
             </div>
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} aria-label="Device status" className={selectCls}>
-                <option value="all">All Device Statuses</option>
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-                <option value="low_battery">Low Battery</option>
-              </select>
-            </div>
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <select value={filterAccount} onChange={(e) => setFilterAccount(e.target.value)} aria-label="Account status" className={selectCls}>
                 <option value="all">All Accounts</option>
                 <option value="active">Active</option>
@@ -250,8 +241,6 @@ export function AdminFamilies() {
                 <tr>
                   <th className="font-medium px-6 py-4">Person monitored</th>
                   <th className="font-medium px-6 py-4">MAC Address</th>
-                  <th className="font-medium px-6 py-4">Battery</th>
-                  <th className="font-medium px-6 py-4">Status</th>
                   <th className="font-medium px-6 py-4">Total Falls</th>
                   <th className="font-medium px-6 py-4">Account</th>
                   <th className="font-medium px-6 py-4">Registered Date</th>
@@ -261,7 +250,7 @@ export function AdminFamilies() {
               <tbody className="divide-y divide-border">
                 {filteredFamilies.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                       {filtersOn ? "No families matched your filters" : "No families registered yet"}
                     </td>
                   </tr>
@@ -270,17 +259,6 @@ export function AdminFamilies() {
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4 text-foreground font-medium">{family.name}</td>
                       <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
-                      <td className="px-6 py-4">
-                        <div className="mx-auto grid w-fit grid-cols-[auto_auto] items-center gap-x-2 gap-y-1.5">
-                          <span className="text-left text-xs font-bold text-foreground">Wearable</span>
-                          <BatteryBadge level={family.wearableBattery} />
-                          <span className="text-left text-xs font-bold text-foreground">Hub</span>
-                          <BatteryBadge level={family.hubBattery} />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <StatusBadge status={family.status} />
-                      </td>
                       <td className="px-6 py-4 text-foreground font-medium">{family.totalIncidents}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${

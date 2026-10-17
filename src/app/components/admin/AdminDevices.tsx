@@ -274,7 +274,7 @@ export function AdminDevices() {
         ) : (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-center text-sm">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-6 py-4">MAC Address</th>
@@ -282,7 +282,7 @@ export function AdminDevices() {
                   <th className="font-medium px-6 py-4">Batteries</th>
                   <th className="font-medium px-6 py-4">Assigned To</th>
                   <th className="font-medium px-6 py-4">Last Sync</th>
-                  <th className="font-medium px-6 py-4 text-right">Actions</th>
+                  <th className="font-medium px-6 py-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -299,13 +299,11 @@ export function AdminDevices() {
                       <td className="px-6 py-4">
                         <StatusBadge status={device.status} />
                       </td>
-                      <td className="px-6 py-4 text-foreground text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-muted-foreground w-16">Wearable</span>
+                      <td className="px-6 py-4">
+                        <div className="mx-auto grid w-fit grid-cols-[auto_auto] items-center gap-x-2 gap-y-1.5">
+                          <span className="text-left text-xs font-bold text-foreground">Wearable</span>
                           <BatteryBadge level={device.wearableBattery} />
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-muted-foreground w-16">Hub</span>
+                          <span className="text-left text-xs font-bold text-foreground">Hub</span>
                           <BatteryBadge level={device.hubBattery} />
                         </div>
                       </td>
@@ -319,7 +317,7 @@ export function AdminDevices() {
                       <td className="px-6 py-4 text-muted-foreground text-xs">
                         {device.lastUpdate ? device.lastUpdate.toLocaleString() : "No data yet"}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-center">
                         <button 
                           onClick={() => setSelectedDevice(device)}
                           className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
