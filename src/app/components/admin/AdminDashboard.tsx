@@ -172,7 +172,6 @@ export function AdminDashboard() {
   }, []);
 
   const shownIncidents = incidents.filter(i => incidentFilter === "all" || i.kind === incidentFilter).slice(0, 5);
-  const deliveredPct = stats.alertsTotal ? Math.round((stats.alertsDelivered / stats.alertsTotal) * 100) : null;
 
   return (
     <AdminLayout>
@@ -209,10 +208,7 @@ export function AdminDashboard() {
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs sm:text-sm text-muted-foreground">Alerts delivered</span>
-              <span className="text-xl sm:text-2xl font-semibold">{deliveredPct === null ? "—" : `${deliveredPct}%`}</span>
-              <span className="text-xs text-muted-foreground">
-                {stats.alertsTotal ? `${stats.alertsDelivered} of ${stats.alertsTotal} alerts` : "No alerts yet"}
-              </span>
+              <span className="text-xl sm:text-2xl font-semibold">{stats.alertsDelivered}/{stats.alertsTotal}</span>
             </div>
           </div>
         </div>
