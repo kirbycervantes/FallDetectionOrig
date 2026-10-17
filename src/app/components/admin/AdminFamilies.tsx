@@ -44,6 +44,9 @@ export function AdminFamilies() {
   const now = useNow(5000);
   const nowRef = useRef(now);
   nowRef.current = now;
+  const recomputeRef = useRef<(() => void) | null>(null);
+  // re-evaluate online/offline every few seconds WITHOUT re-subscribing to Firebase (re-subscribing made the page flicker)
+  useEffect(() => { recomputeRef.current?.(); }, [now]);
 
   useEffect(() => {
     let currentFamilies: any = {};
@@ -87,6 +90,7 @@ export function AdminFamilies() {
       setLoading(false);
     };
 
+    recomputeRef.current = updateFamiliesList;
     const unsubFamilies = onValue(ref(db, 'families'), (snapshot) => {
       currentFamilies = snapshot.val() || {};
       updateFamiliesList();
@@ -105,7 +109,7 @@ export function AdminFamilies() {
       unsubDevices();
       unsubEvents();
     };
-  }, [now]);
+  }, []);
 
   const filteredFamilies = families.filter(f => {
     const q = norm(search);

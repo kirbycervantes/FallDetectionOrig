@@ -33,7 +33,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     await signOut(auth);
   };
 
-  const HeaderActions = () => (
+  const headerActions = (
     <div className="flex items-center gap-2 shrink-0">
       <Link
         to="/admin/settings"
@@ -141,7 +141,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <span className="font-semibold text-foreground text-sm">Admin</span>
           </div>
         </div>
-        <HeaderActions />
+        {headerActions}
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -177,7 +177,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </button>
             )}
           </div>
-          <HeaderActions />
+          {headerActions}
         </div>
         {children}
       </main>

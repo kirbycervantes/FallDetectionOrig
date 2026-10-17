@@ -268,7 +268,11 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
                       <div className="min-w-0">
                         <p className="font-semibold mb-0.5 text-foreground flex flex-wrap items-center gap-2">
                           {kindLabel(event.kind)}
-                          {event.cancelled && <span className="text-muted-foreground font-normal">- cancelled</span>}
+                          {event.cancelled && (
+                            <span className="px-2 py-0.5 rounded-md bg-foreground text-background text-[11px] font-bold uppercase tracking-wide">
+                              Cancelled
+                            </span>
+                          )}
                           {event.id === latestId && (
                             <span className="px-2 py-0.5 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wide">
                               Latest

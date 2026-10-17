@@ -58,6 +58,9 @@ export function AdminDashboard() {
   const now = useNow(5000);
   const nowRef = useRef(now);
   nowRef.current = now;
+  const recomputeRef = useRef<(() => void) | null>(null);
+  // re-evaluate online/offline every few seconds WITHOUT re-subscribing to Firebase (re-subscribing made the page flicker)
+  useEffect(() => { recomputeRef.current?.(); }, [now]);
 
   useEffect(() => {
     let currentFamilies: any = {};
@@ -147,6 +150,7 @@ export function AdminDashboard() {
       });
     };
 
+    recomputeRef.current = recompute;
     const unsubscribeFamilies = onValue(ref(db, 'families'), (snapshot) => {
       currentFamilies = snapshot.val() || {};
       recompute();
@@ -165,7 +169,7 @@ export function AdminDashboard() {
       unsubscribeDevices();
       unsubscribeEvents();
     };
-  }, [now]);
+  }, []);
 
   const shownIncidents = incidents.filter(i => incidentFilter === "all" || i.kind === incidentFilter).slice(0, 5);
   const deliveredPct = stats.alertsTotal ? Math.round((stats.alertsDelivered / stats.alertsTotal) * 100) : null;

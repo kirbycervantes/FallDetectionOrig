@@ -21,6 +21,9 @@ export function AdminAnalytics() {
   const now = useNow(5000);
   const nowRef = useRef(now);
   nowRef.current = now;
+  const recomputeRef = useRef<(() => void) | null>(null);
+  // re-evaluate online/offline every few seconds WITHOUT re-subscribing to Firebase (re-subscribing made the page flicker)
+  useEffect(() => { recomputeRef.current?.(); }, [now]);
   
   const [stats, setStats] = useState({
     activeFamilies: 0,
@@ -106,6 +109,7 @@ export function AdminAnalytics() {
       if (loaded.families && loaded.devices && loaded.events) setLoading(false);
     };
 
+    recomputeRef.current = recompute;
     const unsubFamilies = onValue(ref(db, 'families'), (snap) => {
       currentFamilies = snap.val() || {}; loaded.families = true; recompute();
     });
@@ -121,7 +125,7 @@ export function AdminAnalytics() {
       unsubDevices();
       unsubEvents();
     };
-  }, [days, now]);
+  }, [days]);
 
   return (
     <AdminLayout>
@@ -225,13 +229,13 @@ export function AdminAnalytics() {
                       <>
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         {deviceLines.map((d, i) => (
-                          <Line key={d.key} type="monotone" dataKey={d.key} name={d.name} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                          <Line isAnimationActive={false} key={d.key} type="monotone" dataKey={d.key} name={d.name} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                         ))}
                       </>
                     ) : (
                       <>
-                        <Line type="monotone" dataKey="incidents" name="Incidents" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="cancelled" name="Cancelled" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line isAnimationActive={false} type="monotone" dataKey="incidents" name="Incidents" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                        <Line isAnimationActive={false} type="monotone" dataKey="cancelled" name="Cancelled" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} />
                       </>
                     )}
                   </LineChart>
@@ -256,7 +260,7 @@ export function AdminAnalytics() {
                       contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }} 
                       cursor={{ fill: 'transparent' }}
                     />
-                    <Bar dataKey="count" name="Devices" radius={[4, 4, 0, 0]} />
+                    <Bar isAnimationActive={false} dataKey="count" name="Devices" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}

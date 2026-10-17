@@ -30,6 +30,9 @@ export function AdminDevices() {
   const now = useNow(5000);
   const nowRef = useRef(now);
   nowRef.current = now;
+  const recomputeRef = useRef<(() => void) | null>(null);
+  // re-evaluate online/offline every few seconds WITHOUT re-subscribing to Firebase (re-subscribing made the page flicker)
+  useEffect(() => { recomputeRef.current?.(); }, [now]);
 
   // Provision modal state
   const [showProvisionModal, setShowProvisionModal] = useState(false);
@@ -94,6 +97,7 @@ export function AdminDevices() {
       if (loaded.devices && loaded.families) setLoading(false);
     };
 
+    recomputeRef.current = updateDevicesList;
     const unsubDevices = onValue(ref(db, 'devices'), (snapshot) => {
       currentDevices = snapshot.val() || {}; loaded.devices = true; updateDevicesList();
     });
@@ -109,7 +113,7 @@ export function AdminDevices() {
       unsubFamilies();
       unsubEvents();
     };
-  }, [now]);
+  }, []);
 
   const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
   const filteredDevices = devices.filter(d => {
