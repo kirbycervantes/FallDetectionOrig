@@ -223,7 +223,7 @@ export function AdminDashboard() {
             </Link>
           </div>
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm min-w-[560px]">
+            <table className="w-full text-center text-xs sm:text-sm min-w-[560px]">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Person monitored</th>

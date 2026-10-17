@@ -245,7 +245,7 @@ export function AdminFamilies() {
         ) : (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-center text-sm">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-6 py-4">Person monitored</th>
@@ -270,13 +270,11 @@ export function AdminFamilies() {
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4 text-foreground font-medium">{family.name}</td>
                       <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
-                      <td className="px-6 py-4 text-foreground text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-muted-foreground w-16">Wearable</span>
+                      <td className="px-6 py-4">
+                        <div className="mx-auto grid w-fit grid-cols-[auto_auto] items-center gap-x-2 gap-y-1.5">
+                          <span className="text-left text-xs font-bold text-foreground">Wearable</span>
                           <BatteryBadge level={family.wearableBattery} />
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-muted-foreground w-16">Hub</span>
+                          <span className="text-left text-xs font-bold text-foreground">Hub</span>
                           <BatteryBadge level={family.hubBattery} />
                         </div>
                       </td>
