@@ -17,7 +17,7 @@ export function isCancelled(raw: any): boolean {
   return raw?.cancelled === true || String(raw?.status ?? '').toLowerCase() === 'cancelled';
 }
 
-/** Cancelled by holding CANCEL 2 s on the wearable (no SMS, no call). */
+/** Cancelled by holding CANCEL 2 s on the wearable (no SMS). */
 export function isStoppedQuietly(raw: any): boolean {
   return raw?.stoppedQuietly === true;
 }

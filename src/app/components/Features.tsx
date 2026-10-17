@@ -1,4 +1,4 @@
-import { Smartphone, MapPin, Phone, Monitor, Bell, Activity } from 'lucide-react';
+import { Smartphone, MapPin, XCircle, Monitor, Bell, Activity } from 'lucide-react';
 
 const features = [
   {
@@ -14,15 +14,15 @@ const features = [
     color: 'bg-green-500',
   },
   {
-    icon: Phone,
-    title: 'Two-Way Audio',
-    description: 'Real-time voice communication between user and caregivers through SIM800L GSM module for immediate assessment.',
+    icon: XCircle,
+    title: 'Cancel Button',
+    description: 'A 5-second countdown on the wearable lets the user press Cancel to stop a false alarm before any SMS is sent.',
     color: 'bg-purple-500',
   },
   {
     icon: MapPin,
     title: 'GPS Tracking',
-    description: 'NEO-6M GPS module provides accurate real-time location tracking for faster emergency response.',
+    description: 'NEO-7M GPS module provides accurate real-time location tracking for faster emergency response.',
     color: 'bg-red-500',
   },
   {
@@ -33,8 +33,8 @@ const features = [
   },
   {
     icon: Bell,
-    title: 'Simultaneous Alerts',
-    description: 'Instant alerts sent to all on-duty caregivers simultaneously to ensure rapid response.',
+    title: 'Multi-Contact Alerts',
+    description: 'The SMS alert goes to every emergency contact registered on the website, so no one is left out.',
     color: 'bg-teal-500',
   },
 ];

@@ -37,7 +37,9 @@ When a fall is detected or the SOS button is pressed, the ESP32 must create a ne
 ```
 
 ## 3. Alert Delivery Receipts
-After the SIM7670G/SIM7672 module finishes calling or texting the emergency contacts, it must update the event with the delivery status so the Admin Dashboard can track it.
+(The system sends SMS alerts only. Phone calls are not used, so no call receipts are recorded.)
+
+After the SIM7670G/SIM7672 module finishes texting the emergency contacts, it must update the event with the delivery status so the Admin Dashboard can track it.
 
 **Path:** `events/{deviceId}/{eventId}/receipts`
 **Method:** `PUT` or Array append
@@ -49,42 +51,11 @@ After the SIM7670G/SIM7672 module finishes calling or texting the emergency cont
     "contactName": "Maria Santos",
     "timestamp": "2024-03-20T14:22:05Z",
     "status": "Delivered" // or "Failed"
-  },
-  {
-    "method": "Call",
-    "contactName": "Maria Santos",
-    "timestamp": "2024-03-20T14:22:10Z",
-    "status": "Failed"
   }
 ]
 ```
 
-## 4. GSM Voice Call Signaling (Live Audio)
-To support live audio between the caregiver and the patient using the SIM800L module, the dashboard acts as a remote control.
-
-**Path:** `devices/{deviceId}/callRequest`
-
-### When the dashboard initiates a call:
-The dashboard will write the caregiver's target phone number and a timestamp to the database.
-
-```json
-{
-  "targetNumber": "+639123456789",
-  "timestamp": 1710940000000,
-  "status": "requested" // Can be 'requested', 'dialing', 'in-call', 'ended', 'failed'
-}
-```
-
-### ESP32 Response (Executing the call):
-The ESP32 must listen to this node. When a new `callRequest` appears:
-1. Execute the AT command to dial the number: `ATD+639123456789;`
-2. Update the `status` field in Firebase to `"dialing"`.
-3. Monitor the call status via AT commands and update the Firebase status to `"in-call"` when connected.
-4. When the call is terminated (either by the caregiver hanging up or the device hanging up via `ATH`), update the status to `"ended"`.
-
-**Note:** The dashboard will listen to the `status` field to show real-time call progress to the caregiver.
-
-## 5. Sending Push Notifications (FCM)
+## 4. Sending Push Notifications (FCM)
 To avoid needing a paid Firebase backend, the ESP32 can trigger push notifications directly via the Firebase Cloud Messaging (FCM) Legacy HTTP API.
 
 ### Step A: Fetch Caregiver Tokens

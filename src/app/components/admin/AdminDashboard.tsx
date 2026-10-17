@@ -133,7 +133,7 @@ export function AdminDashboard() {
       // Newest first
       parsedIncidents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-      // ---- Alerts delivered: share of fall / SOS alerts whose SMS + call went out ----
+      // ---- Alerts delivered: share of fall / SOS alerts whose SMS went out ----
       const alertRows = buildRows(currentEvents, currentFamilies);
 
       setFamilies(parsedFamilies);

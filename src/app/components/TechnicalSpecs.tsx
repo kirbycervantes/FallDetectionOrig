@@ -14,13 +14,13 @@ const components = [
   },
   {
     icon: Wifi,
-    name: 'NEO-6M GPS Module',
+    name: 'NEO-7M GPS Module',
     description: 'Real-time location tracking and positioning',
   },
   {
     icon: Radio,
     name: 'SIM800L GSM Module',
-    description: 'SMS alerts and two-way voice communication',
+    description: 'SMS alerts to the registered emergency contacts',
   },
 ];
 
@@ -28,7 +28,7 @@ const objectives = [
   'Design wearable fall-detection prototype with MPU6050, GPS, and GSM integration',
   'Implement fall detection algorithm distinguishing falls from daily activities',
   'Send SMS notifications with GPS location to emergency contacts',
-  'Enable two-way voice communication between user and contacts',
+  'Let the wearer cancel a false alarm within a 5-second window',
   'Develop web-based monitoring dashboard with real-time location display',
   'Achieve fall detection accuracy above 90% with minimal response time',
 ];

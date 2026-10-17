@@ -8,7 +8,7 @@ CareBeacon is a real-time fall detection monitoring system that connects an ESP3
 - Tracks the live GPS location of the wearer on an interactive map.
 - Monitors device health (battery level, connection status).
 - Logs a chronological history of fall events and device interactions.
-- Enables multi-caregiver scheduling, emergency contact management, and direct GSM audio calls to the patient.
+- Enables multi-caregiver scheduling, and emergency contact management (alerts are sent by SMS).
 
 ### Who Uses It
 - **Elderly Individuals / Patients:** Wear the ESP32-based hardware device for continuous safety monitoring.
@@ -55,7 +55,6 @@ CareBeacon is a real-time fall detection monitoring system that connects an ESP3
 - **Emergency Contact Management** — Add, edit, and manage emergency contacts.
 - **Caregiver Scheduling** — Coordinate care shifts between family members.
 - **Caregiver Analytics** — View activity summaries and response times.
-- **Live Audio Call** — Initiate a GSM voice call to the patient through the device.
 - **Multi-Caregiver Support** — Multiple caregivers can link to the same device with an approval workflow.
 - **Admin Dashboard** — Full admin panel for managing devices, families, incidents, and system settings.
 - **Push Notifications (FCM)** — Browser-based push notifications via Firebase Cloud Messaging.
@@ -301,7 +300,6 @@ CareBeacon/
 │   │       ├── Login.tsx           # Login / Sign-up form
 │   │       ├── LocationMap.tsx     # Leaflet map for location tracking
 │   │       ├── DeviceStatus.tsx    # Device battery & connection status
-│   │       ├── DeviceAudio.tsx     # Live GSM audio call interface
 │   │       ├── FallHistory.tsx     # Fall event history timeline
 │   │       ├── EmergencyContacts.tsx
 │   │       ├── CaregiverSchedule.tsx
@@ -339,8 +337,7 @@ The ESP32 device communicates with the web dashboard through Firebase Realtime D
 
 - **Device heartbeat** — Status, battery, location updates
 - **Fall events** — Creating emergency event records
-- **Alert delivery receipts** — SMS/Call delivery tracking
-- **GSM call signaling** — Live audio call control
+- **Alert delivery receipts** — SMS delivery tracking
 - **FCM push notifications** — Sending alerts directly from the device
 
 ---
@@ -364,11 +361,10 @@ The ESP32 device communicates with the web dashboard through Firebase Realtime D
 │   ├── status, battery, lastUpdate
 │   ├── location/{lat, lng}
 │   ├── familyId
-│   ├── callRequest/                 # GSM call signaling
 │   └── fcmTokens/{uid}             # Push notification tokens
 └── events/{deviceId}/{eventId}/
     ├── timestamp, status, location
-    └── receipts[]                   # SMS/Call delivery receipts
+    └── receipts[]                   # SMS delivery receipts
 ```
 
 ---

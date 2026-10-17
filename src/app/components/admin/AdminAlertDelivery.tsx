@@ -119,7 +119,7 @@ export function AdminAlertDelivery() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Alert Delivery</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Every SMS and call the central hub sends for fall and SOS alerts
+              Every SMS the central hub sends for fall and SOS alerts
             </p>
           </div>
           <div>
@@ -196,7 +196,7 @@ export function AdminAlertDelivery() {
           <div ref={tableTopRef} className="scroll-mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Desktop table */}
             <div className="hidden w-full overflow-x-auto md:block">
-              <table className="w-full min-w-[820px] text-left text-sm">
+              <table className="w-full min-w-[680px] text-left text-sm">
                 <caption className="sr-only">Alert delivery log, {periodLabel}, newest first</caption>
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
@@ -205,14 +205,12 @@ export function AdminAlertDelivery() {
                     <th scope="col" className="px-4 py-3 font-medium">Alert type</th>
                     <th scope="col" className="px-4 py-3 font-medium">Recipient</th>
                     <th scope="col" className="px-4 py-3 font-medium">SMS status</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Call status</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Overall result</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {pageRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">{emptyText}</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">{emptyText}</td>
                     </tr>
                   ) : (
                     pageRows.map((row) => (
@@ -227,8 +225,6 @@ export function AdminAlertDelivery() {
                         <td className="px-4 py-3"><AlertTypeBadge type={row.alertType} /></td>
                         <td className="px-4 py-3"><RecipientCell row={row} /></td>
                         <td className="px-4 py-3"><StatusPill ok={row.sms === "Delivered"} /></td>
-                        <td className="px-4 py-3"><StatusPill ok={row.call === "Delivered"} /></td>
-                        <td className="px-4 py-3"><StatusPill ok={row.delivered} /></td>
                       </tr>
                     ))
                   )}
@@ -255,8 +251,6 @@ export function AdminAlertDelivery() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">SMS</span>
                       <StatusPill ok={row.sms === "Delivered"} />
-                      <span className="ml-1 text-xs text-muted-foreground">Call</span>
-                      <StatusPill ok={row.call === "Delivered"} />
                     </div>
                   </li>
                 ))
