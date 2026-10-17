@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { Users, Wifi, Send, AlertTriangle, Hand, XCircle } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
+import { BatteryBadge } from "../BatteryBadge";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { resolveEventTime } from "../../../lib/time";
@@ -15,8 +16,8 @@ interface Family {
   name: string;
   deviceId: string;
   status: "online" | "offline" | "low_battery";
-  wearableBattery: string;
-  hubBattery: string;
+  wearableBattery: number | null;
+  hubBattery: number | null;
   createdAt: string;
 }
 
@@ -79,13 +80,13 @@ export function AdminDashboard() {
         const device = deviceId ? currentDevices[deviceId] : undefined;
 
         let status: Family["status"] = "offline";
-        let wearable = "—";
-        let hub = "—";
+        let wearable: number | null = null;
+        let hub: number | null = null;
 
         if (deviceId) {
           const levels = batteryLevels(device);
-          wearable = `${Math.round(levels.wearable)}%`;
-          hub = `${Math.round(levels.hub)}%`;
+          wearable = Math.round(levels.wearable);
+          hub = Math.round(levels.hub);
           status = deviceState(device, nowRef.current);
           // count each physical device once, even if linked to several families
           if (!seenDevices.has(deviceId)) {
@@ -244,8 +245,8 @@ export function AdminDashboard() {
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-foreground font-medium">{family.name}</td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground">{family.wearableBattery}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground">{family.hubBattery}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4"><BatteryBadge level={family.wearableBattery} /></td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4"><BatteryBadge level={family.hubBattery} /></td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4">
                         <StatusBadge status={family.status} />
                       </td>

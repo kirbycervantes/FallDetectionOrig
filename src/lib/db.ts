@@ -6,7 +6,8 @@ import {
   set as fbSet, 
   update as fbUpdate, 
   remove as fbRemove, 
-  get as fbGet 
+  get as fbGet,
+  runTransaction as fbRunTransaction
 } from 'firebase/database';
 import { db as firebaseDb } from './firebase';
 
@@ -48,4 +49,8 @@ export const remove = (reference: any) => {
 
 export const getOnce = async (reference: any) => {
   return fbGet(reference);
+};
+
+export const runTransaction = (reference: any, updater: (current: any) => any) => {
+  return fbRunTransaction(reference, updater);
 };

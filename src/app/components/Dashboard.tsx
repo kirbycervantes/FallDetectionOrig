@@ -6,6 +6,8 @@ import { FallHistory } from './FallHistory';
 import { DeviceStatus } from './DeviceStatus';
 import { EmergencyContacts } from './EmergencyContacts';
 import { useBatteryLevels } from './BatteryPanel';
+import { useBatteryDrain, batteryClasses } from '../../lib/battery';
+import { LowBatteryAlerts } from './LowBatteryAlerts';
 import { isCountedFall } from '../../lib/events';
 import { isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 import { UserSettings } from './UserSettings';
@@ -88,6 +90,8 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
   const [patientName, setPatientName] = useState<string>('');
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const batteryLevels = useBatteryLevels(deviceId);
+  // the demo battery goes down while the website is open (not in the read-only admin view)
+  useBatteryDrain(deviceId && !readOnly ? [deviceId] : []);
   const [loadingContext, setLoadingContext] = useState(true);
   
 
@@ -605,16 +609,18 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     {
       label: 'Wearable Battery',
       icon: Battery,
-      tint: 'bg-primary/10 text-primary',
+      tint: `${batteryClasses(batteryLevels.wearable).soft} ${batteryClasses(batteryLevels.wearable).text}`,
+      valueClass: batteryClasses(batteryLevels.wearable).text,
       value: `${Math.round(batteryLevels.wearable)}%`,
-      note: batteryLevels.wearable > 20 ? 'Good' : 'Low',
+      note: batteryClasses(batteryLevels.wearable).label,
     },
     {
       label: 'Central Hub Battery',
       icon: Battery,
-      tint: 'bg-primary/10 text-primary',
+      tint: `${batteryClasses(batteryLevels.hub).soft} ${batteryClasses(batteryLevels.hub).text}`,
+      valueClass: batteryClasses(batteryLevels.hub).text,
       value: `${Math.round(batteryLevels.hub)}%`,
-      note: batteryLevels.hub > 20 ? 'Good' : 'Low',
+      note: batteryClasses(batteryLevels.hub).label,
     },
     {
       label: 'Total Falls',
@@ -634,6 +640,9 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
 
   return (
     <div className="size-full flex flex-col bg-background text-foreground">
+      {/* Low battery pop-ups (20 %, 15 %, 10 %, 5 %, and every 10 s at 0 %) */}
+      {!readOnly && deviceId && <LowBatteryAlerts deviceId={deviceId} />}
+
       {/* Top Bar */}
       <header className="relative border-b border-border bg-card shrink-0">
         <div className="px-4 md:px-8 py-3 flex items-center justify-between gap-3">
@@ -752,7 +761,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             {/* Status cards - not on Settings, so it is clear you are on the Settings page */}
             {activeTab !== 'settings' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
-                {statCards.map(({ label, icon: Icon, tint, value, note }, i) => (
+                {statCards.map(({ label, icon: Icon, tint, value, note, valueClass }, i) => (
                   <div
                     key={label}
                     className={`bg-card border border-border rounded-2xl p-3 sm:p-4 shadow-sm ${i === 0 ? 'col-span-2 sm:col-span-1' : ''}`}
@@ -765,8 +774,8 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                       <div className="min-w-0 flex-1">
                         <p className="text-xs sm:text-sm text-muted-foreground leading-tight">{label}</p>
                         <div className="flex items-baseline justify-between gap-2 mt-1">
-                          <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{value}</p>
-                          <span className="text-[11px] text-muted-foreground text-right leading-tight">{note}</span>
+                          <p className={`text-xl sm:text-2xl leading-none ${valueClass ? `font-bold ${valueClass}` : 'font-semibold text-foreground'}`}>{value}</p>
+                          <span className={`text-[11px] text-right leading-tight ${valueClass ? `font-semibold ${valueClass}` : 'text-muted-foreground'}`}>{note}</span>
                         </div>
                       </div>
                     </div>

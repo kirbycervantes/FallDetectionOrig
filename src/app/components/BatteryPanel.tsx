@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Battery, Watch, Router } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
+import { DEFAULT_LEVELS, batteryClasses } from '../../lib/battery';
 
-// Shown until the devices report real values to devices/{deviceId}/batteries/{wearable|hub}
-export const DEFAULT_LEVELS = { wearable: 85, hub: 92 };
+// 100 % until the battery starts going down (see lib/battery.ts)
+export { DEFAULT_LEVELS };
 
 interface BatteryPanelProps {
   deviceId: string;
 }
 
-function levelColor(level: number) {
-  if (level > 50) return { text: 'text-success', bg: 'bg-success', soft: 'bg-success/10' };
-  if (level > 20) return { text: 'text-warning', bg: 'bg-warning', soft: 'bg-warning/10' };
-  return { text: 'text-destructive', bg: 'bg-destructive', soft: 'bg-destructive/10' };
-}
+// green 50 % and up, yellow 21-49 %, red 20 % and below
+const levelColor = batteryClasses;
 
 /** Wearable + Central Hub battery levels (static defaults until the devices report real values). */
 export function useBatteryLevels(deviceId: string | null) {

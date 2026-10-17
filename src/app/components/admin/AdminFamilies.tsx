@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { AdminLayout } from "./AdminLayout";
 import { StatusBadge } from "./StatusBadge";
+import { BatteryBadge } from "../BatteryBadge";
 import { SkeletonTable } from "../ui/skeleton";
 import { db, ref, onValue, push, set, update } from "../../../lib/db";
 import { auth } from "../../../lib/firebase";
@@ -15,8 +16,8 @@ interface Family {
   deviceId: string;
   status: "online" | "offline" | "low_battery";
   accountStatus: "active" | "suspended";
-  wearableBattery: string;
-  hubBattery: string;
+  wearableBattery: number | null;
+  hubBattery: number | null;
   createdAt: string;
   totalIncidents: number;
   caregiverUids: string[];
@@ -76,8 +77,8 @@ export function AdminFamilies() {
           deviceId: deviceId || "Unlinked",
           status,
           accountStatus: f.status === 'suspended' ? 'suspended' : 'active',
-          wearableBattery: deviceId ? `${Math.round(levels.wearable)}%` : "—",
-          hubBattery: deviceId ? `${Math.round(levels.hub)}%` : "—",
+          wearableBattery: deviceId ? Math.round(levels.wearable) : null,
+          hubBattery: deviceId ? Math.round(levels.hub) : null,
           createdAt: f.createdAt,
           totalIncidents,
           caregiverUids: f.caregivers ? Object.keys(f.caregivers) : [],
@@ -272,11 +273,11 @@ export function AdminFamilies() {
                       <td className="px-6 py-4 text-foreground text-xs">
                         <div className="flex items-center gap-1.5">
                           <span className="text-muted-foreground w-16">Wearable</span>
-                          <span>{family.wearableBattery}</span>
+                          <BatteryBadge level={family.wearableBattery} />
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-muted-foreground w-16">Hub</span>
-                          <span>{family.hubBattery}</span>
+                          <BatteryBadge level={family.hubBattery} />
                         </div>
                       </td>
                       <td className="px-6 py-4">

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "./AdminLayout";
 import { StatusBadge } from "./StatusBadge";
+import { BatteryBadge } from "../BatteryBadge";
+import { batteryClasses } from "../../../lib/battery";
 import { db, ref, onValue, set } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
 import { familyDeviceId, personName, batteryLevels, deviceState, flattenEvents } from "./adminData";
@@ -300,11 +302,11 @@ export function AdminDevices() {
                       <td className="px-6 py-4 text-foreground text-xs">
                         <div className="flex items-center gap-1.5">
                           <span className="text-muted-foreground w-16">Wearable</span>
-                          <span className={device.wearableBattery < 20 ? "text-destructive font-medium" : ""}>{device.wearableBattery}%</span>
+                          <BatteryBadge level={device.wearableBattery} />
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-muted-foreground w-16">Hub</span>
-                          <span className={device.hubBattery < 20 ? "text-destructive font-medium" : ""}>{device.hubBattery}%</span>
+                          <BatteryBadge level={device.hubBattery} />
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -363,12 +365,12 @@ export function AdminDevices() {
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Battery Levels</p>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <Battery className={`size-4 ${selectedDevice.wearableBattery < 20 ? "text-destructive" : "text-success"}`} />
-                    Wearable {selectedDevice.wearableBattery}%
+                    <Battery className={`size-4 ${batteryClasses(selectedDevice.wearableBattery).text}`} />
+                    Wearable <BatteryBadge level={selectedDevice.wearableBattery} />
                   </p>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <Battery className={`size-4 ${selectedDevice.hubBattery < 20 ? "text-destructive" : "text-success"}`} />
-                    Hub {selectedDevice.hubBattery}%
+                    <Battery className={`size-4 ${batteryClasses(selectedDevice.hubBattery).text}`} />
+                    Hub <BatteryBadge level={selectedDevice.hubBattery} />
                   </p>
                 </div>
                 <div className="space-y-1">

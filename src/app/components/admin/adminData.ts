@@ -25,7 +25,7 @@ export type DeviceState = "online" | "offline" | "low_battery";
 export function deviceState(device: any, now: number = Date.now()): DeviceState {
   if (!isDeviceOnline(device, now)) return 'offline';
   const l = batteryLevels(device);
-  return Math.min(l.wearable, l.hub) < 20 ? 'low_battery' : 'online';
+  return Math.min(l.wearable, l.hub) <= 20 ? 'low_battery' : 'online';
 }
 
 /** events/{deviceId}/{eventId} -> flat list with real dates */

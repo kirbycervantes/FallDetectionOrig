@@ -27,6 +27,9 @@
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         "familyId": {
           ".write": "auth != null"
+        },
+        "batteries": {
+          ".write": "auth != null"
         }
       }
     },
