@@ -152,7 +152,7 @@ export function AdminReview() {
                 <tr>
                   <th className="font-medium px-6 py-4">Caregiver</th>
                   <th className="font-medium px-6 py-4">Monitored Person</th>
-                  <th className="font-medium px-6 py-4">MAC Address</th>
+                  <th className="font-bold text-foreground px-6 py-4">MAC Address</th>
                   <th className="font-medium px-6 py-4">Date</th>
                   <th className="font-medium px-6 py-4 text-right">Actions</th>
                 </tr>
@@ -172,7 +172,7 @@ export function AdminReview() {
                         <div className="text-xs text-muted-foreground">{req.caregiverEmail}</div>
                       </td>
                       <td className="px-6 py-4 text-foreground font-medium">{req.monitoredPersonName}</td>
-                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{req.deviceSerialNumber}</td>
+                      <td className="px-6 py-4 text-foreground font-mono font-bold text-xs">{req.deviceSerialNumber}</td>
                       <td className="px-6 py-4 text-muted-foreground">{new Date(req.createdAt).toLocaleString()}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -221,7 +221,7 @@ export function AdminReview() {
                 <tr>
                   <th className="font-medium px-6 py-4">Caregiver</th>
                   <th className="font-medium px-6 py-4">Monitored Person</th>
-                  <th className="font-medium px-6 py-4">MAC Address</th>
+                  <th className="font-bold text-foreground px-6 py-4">MAC Address</th>
                   <th className="font-medium px-6 py-4">Date</th>
                   <th className="font-medium px-6 py-4">Result</th>
                 </tr>
@@ -241,7 +241,7 @@ export function AdminReview() {
                         <div className="text-xs text-muted-foreground">{req.caregiverEmail}</div>
                       </td>
                       <td className="px-6 py-4 text-foreground font-medium">{req.monitoredPersonName}</td>
-                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{req.deviceSerialNumber}</td>
+                      <td className="px-6 py-4 text-foreground font-mono font-bold text-xs">{req.deviceSerialNumber}</td>
                       <td className="px-6 py-4 text-muted-foreground">{new Date(req.createdAt).toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${

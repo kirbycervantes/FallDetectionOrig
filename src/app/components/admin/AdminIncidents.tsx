@@ -242,7 +242,7 @@ function IncidentView({ inc }: { inc: Incident }) {
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Device MAC address</dt>
-          <dd className="font-mono text-foreground">{inc.deviceId}</dd>
+          <dd className="font-mono font-bold text-foreground">{inc.deviceId}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Started</dt>
@@ -479,7 +479,7 @@ export function AdminIncidents() {
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
                             <span className="font-medium text-foreground">{inc.patientName}</span>
-                            <span className="font-mono text-xs text-muted-foreground">{inc.deviceId}</span>
+                            <span className="font-mono text-xs font-bold text-foreground">{inc.deviceId}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3"><TypeBadge label={inc.typeLabel} /></td>
@@ -510,7 +510,7 @@ export function AdminIncidents() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-foreground">{inc.patientName}</p>
-                        <p className="font-mono text-xs text-muted-foreground">{inc.deviceId}</p>
+                        <p className="font-mono text-xs font-bold text-foreground">{inc.deviceId}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{fmt(inc.latestActivity)}</p>
                       </div>
                       <TypeBadge label={inc.typeLabel} />
@@ -568,7 +568,7 @@ export function AdminIncidents() {
               <DialogHeader>
                 <DialogTitle>{selected.typeLabel} — {selected.patientName}</DialogTitle>
                 <DialogDescription>
-                  Device <span className="font-mono">{selected.deviceId}</span>
+                  Device <span className="font-mono font-bold">{selected.deviceId}</span>
                 </DialogDescription>
               </DialogHeader>
               <IncidentView key={selected.id} inc={selected} />

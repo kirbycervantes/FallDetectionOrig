@@ -277,7 +277,7 @@ export function AdminDevices() {
             <table className="w-full text-center text-sm">
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
-                  <th className="font-medium px-6 py-4">MAC Address</th>
+                  <th className="font-bold text-foreground px-6 py-4">MAC Address</th>
                   <th className="font-medium px-6 py-4">Status</th>
                   <th className="font-medium px-6 py-4">Batteries</th>
                   <th className="font-medium px-6 py-4">Assigned To</th>
@@ -295,7 +295,7 @@ export function AdminDevices() {
                 ) : (
                   filteredDevices.map((device) => (
                     <tr key={device.id} className="hover:bg-muted/50 transition-colors">
-                      <td className="px-6 py-4 text-foreground font-mono font-medium text-xs">{device.id}</td>
+                      <td className="px-6 py-4 text-foreground font-mono font-bold text-xs">{device.id}</td>
                       <td className="px-6 py-4">
                         <StatusBadge status={device.status} />
                       </td>

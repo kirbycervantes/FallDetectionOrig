@@ -240,7 +240,7 @@ export function AdminFamilies() {
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-6 py-4">Person monitored</th>
-                  <th className="font-medium px-6 py-4">MAC Address</th>
+                  <th className="font-bold text-foreground px-6 py-4">MAC Address</th>
                   <th className="font-medium px-6 py-4">Total Falls</th>
                   <th className="font-medium px-6 py-4">Account</th>
                   <th className="font-medium px-6 py-4">Registered Date</th>
@@ -258,7 +258,7 @@ export function AdminFamilies() {
                   filteredFamilies.map((family) => (
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4 text-foreground font-medium">{family.name}</td>
-                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
+                      <td className="px-6 py-4 text-foreground font-mono font-bold text-xs">{family.deviceId}</td>
                       <td className="px-6 py-4 text-foreground font-medium">{family.totalIncidents}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${

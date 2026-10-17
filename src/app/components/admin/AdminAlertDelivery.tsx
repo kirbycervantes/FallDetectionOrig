@@ -219,7 +219,7 @@ export function AdminAlertDelivery() {
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
                             <span className="font-medium text-foreground">{row.patientName}</span>
-                            <span className="font-mono text-xs text-muted-foreground">{row.deviceId}</span>
+                            <span className="font-mono text-xs font-bold text-foreground">{row.deviceId}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3"><AlertTypeBadge type={row.alertType} /></td>
@@ -242,7 +242,7 @@ export function AdminAlertDelivery() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-foreground">{row.patientName}</p>
-                        <p className="font-mono text-xs text-muted-foreground">{row.deviceId}</p>
+                        <p className="font-mono text-xs font-bold text-foreground">{row.deviceId}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{fmtTime(row.time)}</p>
                       </div>
                       <AlertTypeBadge type={row.alertType} />

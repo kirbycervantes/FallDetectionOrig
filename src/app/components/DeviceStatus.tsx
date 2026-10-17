@@ -110,7 +110,7 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
 
         <div className="grid md:grid-cols-2 gap-4">
           <Tile icon={<Cpu className="size-5" />} label="Device ID (MAC address)">
-            <span className="font-mono">{deviceId}</span>
+            <span className="font-mono font-bold">{deviceId}</span>
           </Tile>
 
           <Tile

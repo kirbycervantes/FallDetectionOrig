@@ -227,7 +227,7 @@ export function AdminDashboard() {
               <thead className="text-muted-foreground bg-muted/30">
                 <tr>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Person monitored</th>
-                  <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">MAC Address</th>
+                  <th className="font-bold text-foreground px-3 sm:px-6 py-3 sm:py-4">MAC Address</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Wearable Battery</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Hub Battery</th>
                   <th className="font-medium px-3 sm:px-6 py-3 sm:py-4">Status</th>
@@ -244,7 +244,7 @@ export function AdminDashboard() {
                   families.slice(0, 5).map((family) => (
                     <tr key={family.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-foreground font-medium">{family.name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-muted-foreground font-mono text-xs">{family.deviceId}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-foreground font-mono font-bold text-xs">{family.deviceId}</td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4"><BatteryBadge level={family.wearableBattery} /></td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4"><BatteryBadge level={family.hubBattery} /></td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4">
