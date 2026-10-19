@@ -3,6 +3,7 @@ import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw,
 import { resolveEventTime, validDate } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonList } from './ui/skeleton';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { eventKind, isCancelled, isStoppedQuietly, kindLabel, type EventKind } from '../../lib/events';
 import { parseResponse, saveResponse, type EventResponse, type ResponseStatus } from '../../lib/responses';
 import { downloadCsv, csvDate, csvTime } from '../../lib/exportCsv';
@@ -85,7 +86,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
   // who is on the way / who handled it: picked from the registered emergency contacts
-  const [picker, setPicker] = useState<{ eventId: string; mode: ResponseStatus; person: string } | null>(null);
+  const [picker, setPicker] = useState<{ eventId: string; mode: ResponseStatus; person: string; step: 'choose' | 'confirm' } | null>(null);
   const [contactNames, setContactNames] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
@@ -183,7 +184,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const openPicker = (eventId: string, mode: ResponseStatus, current?: string) => {
     const keep = current && personOptions.includes(current) ? current : '';
     setActionError('');
-    setPicker({ eventId, mode, person: keep || (personOptions.length === 1 ? personOptions[0] : '') });
+    setPicker({ eventId, mode, person: keep || (personOptions.length === 1 ? personOptions[0] : ''), step: 'choose' });
   };
 
   const respond = async (eventId: string, status: ResponseStatus, person: string) => {
@@ -226,6 +227,8 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
       rows
     );
   };
+
+  const pickerEvent = picker ? events.find((e) => e.id === picker.eventId) : undefined;
 
   if (loading) {
     return (
@@ -451,62 +454,24 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
                         )}
 
                         {!readOnly && responder && event.response?.status !== 'handled' && (
-                          picker?.eventId === event.id ? (
-                            <span className="flex flex-wrap items-center gap-2">
-                              <label htmlFor={`who-${event.id}`} className="text-xs text-foreground">
-                                {picker.mode === 'on_my_way' ? 'Who is on the way?' : 'Who handled it?'}
-                              </label>
-                              <select
-                                id={`who-${event.id}`}
-                                value={picker.person}
-                                onChange={(e) => setPicker({ ...picker, person: e.target.value })}
-                                className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground"
-                              >
-                                <option value="">Choose a contact...</option>
-                                {personOptions.map((n) => (
-                                  <option key={n} value={n}>{n}{n === responder.name ? ' (me)' : ''}</option>
-                                ))}
-                              </select>
+                          <span className="flex flex-wrap items-center gap-2">
+                            {!event.response && (
                               <button
                                 type="button"
-                                onClick={() => respond(event.id, picker.mode, picker.person)}
-                                disabled={!picker.person || savingId === event.id}
-                                className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 ${
-                                  picker.mode === 'handled' ? 'bg-success' : 'bg-primary'
-                                }`}
+                                onClick={() => openPicker(event.id, 'on_my_way')}
+                                className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
                               >
-                                {picker.mode === 'handled' ? 'Yes, handled' : 'Confirm'}
+                                I'm on my way
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setPicker(null)}
-                                className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                              >
-                                {picker.mode === 'handled' ? 'Not yet' : 'Cancel'}
-                              </button>
-                            </span>
-                          ) : (
-                            <span className="flex flex-wrap items-center gap-2">
-                              {!event.response && (
-                                <button
-                                  type="button"
-                                  onClick={() => openPicker(event.id, 'on_my_way')}
-                                  disabled={savingId === event.id}
-                                  className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
-                                >
-                                  I'm on my way
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => openPicker(event.id, 'handled', event.response?.by)}
-                                disabled={savingId === event.id}
-                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
-                              >
-                                Handled
-                              </button>
-                            </span>
-                          )
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openPicker(event.id, 'handled', event.response?.by)}
+                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                            >
+                              Handled
+                            </button>
+                          </span>
                         )}
                       </div>
                     )}
@@ -558,6 +523,102 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
           </div>
         )}
       </div>
+      {/* Pop-up: who is on the way / who handled it, then a confirmation */}
+      <Dialog open={!!picker} onOpenChange={(o) => { if (!o && savingId === null) setPicker(null); }}>
+        <DialogContent className="sm:max-w-md">
+          {picker && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {picker.step === 'choose'
+                    ? (picker.mode === 'on_my_way' ? 'Who is on the way?' : 'Who handled it?')
+                    : (picker.mode === 'on_my_way' ? 'Confirm: on the way' : 'Confirm: handled')}
+                </DialogTitle>
+                <DialogDescription>
+                  {pickerEvent ? `${kindLabel(pickerEvent.kind)} - ${pickerEvent.timestamp.toLocaleString()}` : 'Choose from the registered contacts'}
+                </DialogDescription>
+              </DialogHeader>
+
+              {picker.step === 'choose' ? (
+                <div className="space-y-4">
+                  {personOptions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No registered contacts yet. Add one under Emergency Contacts first.
+                    </p>
+                  ) : (
+                    <div role="radiogroup" aria-label="Registered contacts" className="space-y-2">
+                      {personOptions.map((n) => (
+                        <label
+                          key={n}
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-colors ${
+                            picker.person === n ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="responder"
+                            value={n}
+                            checked={picker.person === n}
+                            onChange={() => setPicker({ ...picker, person: n })}
+                            className="size-4 accent-primary"
+                          />
+                          <span className="text-foreground">{n}{n === responder?.name ? ' (me)' : ''}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPicker(null)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPicker({ ...picker, step: 'confirm' })}
+                      disabled={!picker.person}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-foreground">
+                    {picker.mode === 'on_my_way'
+                      ? <>Confirm that <strong>{picker.person}</strong> is on the way. Everyone with access to this account will see it.</>
+                      : <>Mark this alert as handled by <strong>{picker.person}</strong>? Everyone with access to this account will see it.</>}
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPicker({ ...picker, step: 'choose' })}
+                      disabled={savingId === picker.eventId}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => respond(picker.eventId, picker.mode, picker.person)}
+                      disabled={savingId === picker.eventId}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${
+                        picker.mode === 'handled' ? 'bg-success' : 'bg-primary'
+                      }`}
+                    >
+                      {savingId === picker.eventId ? 'Saving...' : 'Yes, confirm'}
+                    </button>
+                  </div>
+                  {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
