@@ -175,7 +175,7 @@ export default function App() {
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-3">Account Suspended</h2>
           <p className="text-muted-foreground mb-8 leading-relaxed">
-            Your access to CareBeacon has been suspended by an administrator. Please contact support if you believe this is a mistake.
+            Your access to CareBeacon has been suspended by an administrator. Please contact the administrator if you believe this is a mistake.
           </p>
           <button
             onClick={() => signOut(auth)}
