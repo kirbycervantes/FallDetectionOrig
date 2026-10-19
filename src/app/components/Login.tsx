@@ -523,9 +523,10 @@ export function Login({ onSignUpComplete }: LoginProps) {
           `users/${uid}/accessStatus`
         );
 
+        // the account stays PENDING until the administrator approves it (Admin -> Review Queue)
         await set(
           userStatusRef,
-          'active'
+          'pending'
         );
 
         console.log(
@@ -568,7 +569,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
         // ----------------------------------------------------------
 
         if (onSignUpComplete) {
-          onSignUpComplete('active');
+          onSignUpComplete('pending');
         }
 
         console.log(

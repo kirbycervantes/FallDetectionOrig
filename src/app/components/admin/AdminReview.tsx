@@ -73,14 +73,9 @@ export function AdminReview() {
       updates[`admin/registrationQueue/${request.id}/status`] = action;
       
       if (action === 'approved') {
-        // 2. Grant access and add to caregivers
+        // 2. Let the caregiver in (the caregiver record was already made at sign-up, so it is not overwritten)
         updates[`users/${request.caregiverUid}/accessStatus`] = 'active';
-        updates[`families/${request.familyId}/caregivers/${request.caregiverUid}`] = {
-          name: request.caregiverName,
-          email: request.caregiverEmail,
-          role: 'caregiver',
-          joinedAt: new Date().toISOString()
-        };
+        updates[`families/${request.familyId}/caregivers/${request.caregiverUid}/approvedAt`] = new Date().toISOString();
       } else if (action === 'rejected') {
         // 2. Suspend the family and user so they can't log in
         updates[`families/${request.familyId}/status`] = 'suspended';

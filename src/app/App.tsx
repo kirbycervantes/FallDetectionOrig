@@ -103,7 +103,7 @@ export default function App() {
     return <SkeletonPage />;
   }
 
-  // Pending join request — waiting for approval from the administrator (Admin → Review Queue)
+  // New account — waiting for approval from the administrator (Admin → Review Queue)
   const PendingApprovalScreen = () => (
     <div className="size-full flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-md text-center">
@@ -119,8 +119,8 @@ export default function App() {
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">Awaiting Approval</h2>
           <p className="text-muted-foreground text-sm mb-6">
-            Your request to join this family has been sent to the administrator.
-            You will gain access to the dashboard once the administrator approves your request.
+            Your account was created and is waiting for the administrator’s approval.
+            You will gain access to the dashboard once the administrator approves it.
           </p>
           <p className="text-xs text-muted-foreground mb-6">
             This page will update automatically when your request is approved.

@@ -429,7 +429,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
       
       await set(ref(db, `devices/${trimmedSerial}/familyId`), newFamilyId);
       await set(ref(db, `users/${user.uid}/familyId`), newFamilyId);
-      await set(ref(db, `users/${user.uid}/accessStatus`), 'active');
+      await set(ref(db, `users/${user.uid}/accessStatus`), 'pending');   // waits for the administrator's approval
 
       // Push to admin registration review queue
       const queueRef = push(ref(db, 'admin/registrationQueue'));
