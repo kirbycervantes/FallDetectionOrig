@@ -9,7 +9,7 @@ import { useBatteryLevels } from './BatteryPanel';
 import { useBatteryDrain, batteryClasses } from '../../lib/battery';
 import { LowBatteryAlerts } from './LowBatteryAlerts';
 import { isCountedFall } from '../../lib/events';
-import { NAME_REGEX, cleanName } from '../../lib/validation';
+import { NAME_REGEX, cleanName, formatMac, MAC_PATTERN, MAC_ERROR } from '../../lib/validation';
 import { isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 import { UserSettings } from './UserSettings';
 import { SkeletonPage } from './ui/skeleton';
@@ -380,6 +380,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     setLinkError('');
     setLinkSuccess('');
     if (!linkSerial.trim()) return setLinkError('Device MAC Address is required');
+    if (!MAC_PATTERN.test(linkSerial.trim())) return setLinkError(MAC_ERROR);
     if (!linkPatient.trim()) return setLinkError('Patient Name is required');
     if (!NAME_REGEX.test(linkPatient.trim())) return setLinkError('The name can only contain letters and spaces (no numbers or special characters).');
     
@@ -498,8 +499,8 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                 <input 
                   type="text" 
                   value={linkSerial}
-                  onChange={(e) => setLinkSerial(e.target.value)}
-                  placeholder="e.g. CB-2026-0001" 
+                  onChange={(e) => setLinkSerial(formatMac(e.target.value))}
+                  placeholder="CB-XXXX-XXXX" 
                   className="w-full px-4 py-2.5 bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
                   required
                 />

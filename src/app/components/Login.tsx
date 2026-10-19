@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FirebaseError } from 'firebase/app';
-import { NAME_REGEX, cleanName, limitPhone, isPhoneTaken } from '../../lib/validation';
+import { NAME_REGEX, cleanName, limitPhone, isPhoneTaken, formatMac, MAC_PATTERN, MAC_ERROR } from '../../lib/validation';
 import { Shield, Cpu, UserCheck, Phone, Eye, EyeOff } from 'lucide-react';
 import { formatPhoneNumber } from '../../lib/formatPhone';
 import { ForgotPassword } from './ForgotPassword';
@@ -96,6 +96,11 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
     if (!emailRegex.test(email.trim())) {
       setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!MAC_PATTERN.test(serialNumber.trim())) {
+      setError(MAC_ERROR);
       return;
     }
 
@@ -1099,7 +1104,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
                           value={serialNumber}
                           onChange={(e) =>
                             setSerialNumber(
-                              e.target.value
+                              formatMac(e.target.value)
                             )
                           }
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-sm font-mono tracking-wider"
