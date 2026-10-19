@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FirebaseError } from 'firebase/app';
 import { NAME_REGEX, cleanName, limitPhone, isPhoneTaken, formatMac, MAC_PATTERN, MAC_ERROR } from '../../lib/validation';
+import { signupGuard } from '../../lib/signupGuard';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Shield, Cpu, UserCheck, Phone, Eye, EyeOff } from 'lucide-react';
 import { formatPhoneNumber } from '../../lib/formatPhone';
 import { ForgotPassword } from './ForgotPassword';
@@ -24,6 +26,8 @@ export function Login({ onSignUpComplete }: LoginProps) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  // pop-up shown when a sign-up is refused
+  const [errorPopup, setErrorPopup] = useState('');
 
   // Field-level error states
   const [nameError, setNameError] = useState('');
@@ -31,6 +35,10 @@ export function Login({ onSignUpComplete }: LoginProps) {
   const [phoneError, setPhoneError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmError, setConfirmError] = useState('');
+
+  useEffect(() => {
+    if (isSignUp && error) setErrorPopup(error);
+  }, [error, isSignUp]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +143,11 @@ export function Login({ onSignUpComplete }: LoginProps) {
       return;
     }
 
+    if (monitoredPersonName.trim().length > 60) {
+      setError("The monitored person's name can be at most 60 characters.");
+      return;
+    }
+
     if (!NAME_REGEX.test(monitoredPersonName.trim())) {
       setError(
         "The monitored person's name can only contain letters and spaces (no numbers or special characters)."
@@ -143,6 +156,8 @@ export function Login({ onSignUpComplete }: LoginProps) {
     }
 
     setLoading(true);
+
+    signupGuard.active = true;   // the dashboard must not open until every check has passed
 
     try {
       // ============================================================
@@ -581,6 +596,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
       handleAuthError(err);
 
     } finally {
+      signupGuard.active = false;
       setLoading(false);
     }
   };
@@ -1139,6 +1155,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
                           }
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-sm"
                           placeholder="Name of the elderly user"
+                          maxLength={60}
                           required={isSignUp}
                         />
 
@@ -1174,6 +1191,26 @@ export function Login({ onSignUpComplete }: LoginProps) {
         </div>
 
       </div>
+
+
+      {/* Pop-up: the sign-up was refused */}
+      <Dialog open={!!errorPopup} onOpenChange={(o) => { if (!o) setErrorPopup(''); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sign-up failed</DialogTitle>
+            <DialogDescription>{errorPopup}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setErrorPopup('')}
+              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              OK
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

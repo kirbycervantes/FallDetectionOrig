@@ -511,6 +511,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                   type="text" 
                   value={linkPatient}
                   onChange={(e) => setLinkPatient(cleanName(e.target.value))}
+                  maxLength={60}
                   placeholder="e.g. John Doe" 
                   className="w-full px-4 py-2.5 bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
                   required

@@ -5,6 +5,7 @@ import { Login } from './components/Login';
 import { AdminRouter } from './components/admin/AdminRouter';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import { signupGuard } from '../lib/signupGuard';
 import { db, ref, onValue, update } from '../lib/db';
 import { Shield, Clock, LogOut, AlertOctagon } from 'lucide-react';
 import { requestNotificationPermission } from '../lib/messaging';
@@ -21,6 +22,8 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      // a sign-up is still being checked: do not open the dashboard for it yet
+      if (signupGuard.active) return;
       setUser(currentUser);
       if (!currentUser) {
         setUserRole(null);
@@ -85,8 +88,12 @@ export default function App() {
     }
   };
   const handleSignUpComplete = (status: 'active' | 'pending') => {
+    // the sign-up passed every check: now let the new account in
+    signupGuard.active = false;
     setAccessStatus(status);
     setUserRole('caregiver');
+    setUser(auth.currentUser);
+    setLoading(false);
   };
 
   // FCM Token registration has been moved to Dashboard.tsx
