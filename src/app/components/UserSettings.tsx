@@ -10,6 +10,7 @@ import {
 } from 'firebase/auth';
 import { useConfirm } from './ui/confirm-dialog';
 import { normalizePhone } from '../../lib/phone';
+import { isPhoneTaken } from '../../lib/validation';
 
 // "+63" is fixed; the user types the 10 digits after it (9XX XXX XXXX).
 const PHONE_ERROR = 'Enter the 10 digits after +63, starting with 9 (e.g., +63 912 345 6789).';
@@ -205,6 +206,17 @@ export function UserSettings() {
     }
     // saved as 09XXXXXXXXX, the same format used at sign-up
     const phoneToSave = '0' + newPhone;
+
+    // one phone number = one account
+    try {
+      if (await isPhoneTaken(phoneToSave, user.uid)) {
+        setPhoneMsg({ type: 'error', text: 'This phone number is already registered to another account.' });
+        return;
+      }
+    } catch {
+      setPhoneMsg({ type: 'error', text: 'Could not check the phone number. Please try again.' });
+      return;
+    }
 
     const ok = await confirm({
       title: 'Change your phone number?',

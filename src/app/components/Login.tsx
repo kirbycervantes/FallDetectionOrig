@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FirebaseError } from 'firebase/app';
-import { sendJoinRequestEmail } from '../../lib/email';
+import { NAME_REGEX, cleanName, limitPhone, isPhoneTaken } from '../../lib/validation';
 import { Shield, Cpu, UserCheck, Phone, Eye, EyeOff } from 'lucide-react';
 import { formatPhoneNumber } from '../../lib/formatPhone';
 import { ForgotPassword } from './ForgotPassword';
@@ -85,7 +85,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
       return;
     }
 
-    const nameRegex = /^[a-zA-Z\s]+$/;
+    const nameRegex = NAME_REGEX;
 
     if (!nameRegex.test(name.trim())) {
       setError('Full Name should only contain letters and spaces.');
@@ -126,6 +126,13 @@ export function Login({ onSignUpComplete }: LoginProps) {
     if (monitoredPersonName.trim().length < 2) {
       setError(
         'Please enter the full name of the monitored person.'
+      );
+      return;
+    }
+
+    if (!NAME_REGEX.test(monitoredPersonName.trim())) {
+      setError(
+        "The monitored person's name can only contain letters and spaces (no numbers or special characters)."
       );
       return;
     }
@@ -187,6 +194,20 @@ export function Login({ onSignUpComplete }: LoginProps) {
         );
 
       const uid = userCredential.user.uid;
+
+      // A sign-up that is refused must not leave an account behind (the e-mail would stay used)
+      const cleanupNewAccount = async () => {
+        try {
+          await userCredential.user.delete();
+        } catch {
+          try { await auth.signOut(); } catch { /* ignore */ }
+        }
+      };
+
+      const rejectSignUp = async (message: string) => {
+        setError(message);
+        await cleanupNewAccount();
+      };
 
       console.log(
         '[SIGNUP] Firebase Authentication successful'
@@ -254,6 +275,8 @@ export function Login({ onSignUpComplete }: LoginProps) {
           '[SIGNUP] Device not found in admin inventory'
         );
 
+        await cleanupNewAccount();
+
         return;
       }
 
@@ -288,6 +311,8 @@ export function Login({ onSignUpComplete }: LoginProps) {
           '[SIGNUP] Device record does not exist'
         );
 
+        await cleanupNewAccount();
+
         return;
       }
 
@@ -302,6 +327,41 @@ export function Login({ onSignUpComplete }: LoginProps) {
       // STEP 5
       // CREATE USER DATABASE PROFILE
       // ============================================================
+
+      // ============================================================
+      // ONE MAC ADDRESS = ONE FAMILY, ONE PHONE NUMBER = ONE ACCOUNT
+      // (joining an existing family was removed)
+      // ============================================================
+
+      if (deviceData.familyId) {
+        await rejectSignUp(
+          'This MAC address is already registered to another account. Each device can belong to only one family.'
+        );
+
+        return;
+      }
+
+      let phoneTaken = false;
+
+      try {
+        phoneTaken = await isPhoneTaken(trimmedPhone, uid);
+      } catch (phoneErr) {
+        console.error('[SIGNUP] Phone check failed:', phoneErr);
+
+        await rejectSignUp(
+          'Could not check the phone number. Please try again.'
+        );
+
+        return;
+      }
+
+      if (phoneTaken) {
+        await rejectSignUp(
+          'This phone number is already registered to another account.'
+        );
+
+        return;
+      }
 
       const now = new Date().toISOString();
 
@@ -327,147 +387,10 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
       // ============================================================
       // STEP 6
-      // CHECK IF DEVICE ALREADY BELONGS TO A FAMILY
+      // CREATE THE FAMILY (a device that already has one was refused above)
       // ============================================================
 
-      if (deviceData.familyId) {
-
-        // ==========================================================
-        // EXISTING FAMILY
-        // ==========================================================
-
-        const familyId =
-          deviceData.familyId;
-
-        console.log(
-          '[SIGNUP] Device already belongs to family:',
-          familyId
-        );
-
-        // ----------------------------------------------------------
-        // Create join request
-        // ----------------------------------------------------------
-
-        const joinRequestsRef = ref(
-          db,
-          `families/${familyId}/joinRequests`
-        );
-
-        const newRequestRef =
-          push(joinRequestsRef);
-
-        await set(
-          newRequestRef,
-          {
-            uid: uid,
-            name: trimmedName,
-            email: trimmedEmail,
-            phone: trimmedPhone,
-            status: 'pending',
-            createdAt: now
-          }
-        );
-
-        console.log(
-          '[SIGNUP] Join request created'
-        );
-
-        // ----------------------------------------------------------
-        // Link user to family
-        // ----------------------------------------------------------
-
-        const userFamilyRef = ref(
-          db,
-          `users/${uid}/familyId`
-        );
-
-        await set(
-          userFamilyRef,
-          familyId
-        );
-
-        const userStatusRef = ref(
-          db,
-          `users/${uid}/accessStatus`
-        );
-
-        await set(
-          userStatusRef,
-          'pending'
-        );
-
-        console.log(
-          '[SIGNUP] User linked to existing family'
-        );
-
-        // ----------------------------------------------------------
-        // Admin registration queue
-        // ----------------------------------------------------------
-
-        const queueRef = ref(
-          db,
-          'admin/registrationQueue'
-        );
-
-        const newQueueRef =
-          push(queueRef);
-
-        await set(
-          newQueueRef,
-          {
-            familyId: familyId,
-            caregiverUid: uid,
-            caregiverName: trimmedName,
-            caregiverEmail: trimmedEmail,
-            deviceSerialNumber: trimmedSerial,
-            monitoredPersonName:
-              '(Joining existing family)',
-            createdAt: now,
-            status: 'pending_review'
-          }
-        );
-
-        console.log(
-          '[SIGNUP] Registration queue created'
-        );
-
-        // ----------------------------------------------------------
-        // Email notification
-        // ----------------------------------------------------------
-
-        try {
-          await sendJoinRequestEmail(
-            trimmedName,
-            trimmedSerial
-          );
-
-          console.log(
-            '[SIGNUP] Join request email sent'
-          );
-        } catch (emailError) {
-          console.error(
-            '[SIGNUP] Email notification failed:',
-            emailError
-          );
-        }
-
-        // ----------------------------------------------------------
-        // Complete
-        // ----------------------------------------------------------
-
-        setInfo(
-          'A request to join this family has been sent to the administrator for approval. You will gain access once approved.'
-        );
-
-        if (onSignUpComplete) {
-          onSignUpComplete('pending');
-        }
-
-        console.log(
-          '[SIGNUP] Signup completed - pending approval'
-        );
-
-      } else {
+      {
 
         // ==========================================================
         // NEW FAMILY
@@ -691,9 +614,10 @@ export function Login({ onSignUpComplete }: LoginProps) {
             'An account with this email already exists. Try signing in instead.';
           break;
 
+        case 'auth/password-does-not-meet-requirements':
         case 'auth/weak-password':
           errorMessage =
-            'Your password is too weak. Please use at least 6 characters.';
+            'Password must be at least 12 characters long, with at least 1 uppercase letter and 1 special character.';
           break;
 
         case 'auth/network-request-failed':
@@ -876,7 +800,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
                           if (
                             val.trim() &&
-                            !/^[a-zA-Z\s]+$/.test(
+                            !NAME_REGEX.test(
                               val.trim()
                             )
                           ) {
@@ -957,14 +881,15 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
                       <input
                         type="tel"
+                        inputMode="numeric"
                         value={phoneNumber}
                         onChange={(e) => {
-                          setPhoneNumber(
-                            e.target.value
-                          );
+                          const limited =
+                            limitPhone(e.target.value);
 
-                          const val =
-                            e.target.value;
+                          setPhoneNumber(limited);
+
+                          const val = limited;
 
                           if (
                             val.trim() &&
@@ -1204,7 +1129,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
                           value={monitoredPersonName}
                           onChange={(e) =>
                             setMonitoredPersonName(
-                              e.target.value
+                              cleanName(e.target.value)
                             )
                           }
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-sm"

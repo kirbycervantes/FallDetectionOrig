@@ -9,6 +9,7 @@ import { useBatteryLevels } from './BatteryPanel';
 import { useBatteryDrain, batteryClasses } from '../../lib/battery';
 import { LowBatteryAlerts } from './LowBatteryAlerts';
 import { isCountedFall } from '../../lib/events';
+import { NAME_REGEX, cleanName } from '../../lib/validation';
 import { isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 import { UserSettings } from './UserSettings';
 import { SkeletonPage } from './ui/skeleton';
@@ -380,6 +381,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
     setLinkSuccess('');
     if (!linkSerial.trim()) return setLinkError('Device MAC Address is required');
     if (!linkPatient.trim()) return setLinkError('Patient Name is required');
+    if (!NAME_REGEX.test(linkPatient.trim())) return setLinkError('The name can only contain letters and spaces (no numbers or special characters).');
     
     setLinkLoading(true);
     try {
@@ -390,34 +392,8 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
       const deviceSnap = await get(deviceRef);
       
       if (deviceSnap.exists() && deviceSnap.val().familyId) {
-        // Device is already linked to a family, request to join
-        const familyId = deviceSnap.val().familyId;
-        
-        // Add to joinRequests
-        const requestRef = push(ref(db, `families/${familyId}/joinRequests`));
-        await set(requestRef, {
-          uid: user.uid,
-          name: user.displayName || user.email?.split('@')[0] || 'Unknown',
-          email: user.email,
-          status: 'pending',
-          timestamp: new Date().toISOString()
-        });
-        // Also push to admin review queue
-        const queueRef = push(ref(db, 'admin/registrationQueue'));
-        await set(queueRef, {
-          familyId: familyId,
-          caregiverUid: user.uid,
-          caregiverName: user.displayName || user.email?.split('@')[0] || 'Unknown',
-          caregiverEmail: user.email,
-          deviceSerialNumber: trimmedSerial,
-          monitoredPersonName: '(Joining existing family)',
-          createdAt: new Date().toISOString(),
-          status: 'pending_review',
-        });
-        
-        setLinkSuccess('A request to join this family has been sent to the administrator for approval.');
-        await set(ref(db, `users/${user.uid}/accessStatus`), 'pending');
-        return;
+        // one MAC address belongs to one family (joining an existing family was removed)
+        throw new Error('This MAC address is already registered to another account. Each device can belong to only one family.');
       }
       
       // 2. Check admin inventory for a new provisioned device
@@ -533,7 +509,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                 <input 
                   type="text" 
                   value={linkPatient}
-                  onChange={(e) => setLinkPatient(e.target.value)}
+                  onChange={(e) => setLinkPatient(cleanName(e.target.value))}
                   placeholder="e.g. John Doe" 
                   className="w-full px-4 py-2.5 bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
                   required
