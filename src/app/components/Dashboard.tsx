@@ -796,7 +796,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                 />
               )}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
-              {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} readOnly={readOnly} />}
+              {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} readOnly={readOnly} deviceId={deviceId ?? undefined} />}
               {activeTab === 'settings' && !readOnly && <UserSettings />}
             </div>
           </div>

@@ -3,6 +3,8 @@ import { Plus, Phone, Mail, Edit2, Trash2, UserPlus, Save } from 'lucide-react';
 import { formatPhoneNumber } from '../../lib/formatPhone';
 import { db, ref, onValue, push, set, remove } from '../../lib/db';
 import { useConfirm } from './ui/confirm-dialog';
+import { validDate } from '../../lib/time';
+import { timeAgo, useNow } from '../../lib/deviceStatus';
 
 interface Contact {
   id: string;
@@ -16,13 +18,17 @@ interface EmergencyContactsProps {
   familyId: string;
   /** Admin read-only view: contacts can be seen but not added or removed. */
   readOnly?: boolean;
+  /** the family's device: the hub reports how many contacts it has, shown under the title */
+  deviceId?: string;
 }
 
 const inputClass =
   'w-full px-4 py-3 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition';
 
-export function EmergencyContacts({ familyId, readOnly = false }: EmergencyContactsProps) {
+export function EmergencyContacts({ familyId, readOnly = false, deviceId }: EmergencyContactsProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [hub, setHub] = useState<{ count: number | null; at: Date | null }>({ count: null, at: null });
+  const now = useNow(5000);
   const [confirm, confirmDialog] = useConfirm();
 
   // Form: null = closed, 'new' = adding, otherwise the id of the contact being edited
@@ -49,6 +55,19 @@ export function EmergencyContacts({ familyId, readOnly = false }: EmergencyConta
     });
     return () => unsubscribe();
   }, [familyId]);
+
+  // what the hub says it has (it writes contactCount / contactsSyncedAt every time it checks)
+  useEffect(() => {
+    if (!deviceId) return;
+    const unsub = onValue(ref(db, `devices/${deviceId}`), (snap) => {
+      const v = snap.val() || {};
+      setHub({
+        count: typeof v.contactCount === 'number' ? v.contactCount : null,
+        at: validDate(v.contactsSyncedAt),
+      });
+    });
+    return () => unsub();
+  }, [deviceId]);
 
   const openAdd = () => {
     setFormMode('new');
@@ -178,6 +197,22 @@ export function EmergencyContacts({ familyId, readOnly = false }: EmergencyConta
     </div>
   );
 
+  // is the hub up to date? (you cannot see the hub's serial monitor, so the page tells you)
+  let hubNote: { text: string; warn: boolean } | null = null;
+  if (deviceId) {
+    const plural = (n: number) => `${n} contact${n === 1 ? '' : 's'}`;
+    if (hub.count === null) {
+      hubNote = { text: 'Central hub: it has not reported its contact list yet. It checks for changes about every 15 seconds while it is online.', warn: false };
+    } else if (hub.count !== contacts.length) {
+      hubNote = {
+        text: `Central hub has ${plural(hub.count)}, the website has ${plural(contacts.length)}. The hub checks about every 15 seconds while online, so wait a moment. If it stays different, the hub may be offline, or it skips invalid or duplicate numbers.`,
+        warn: true,
+      };
+    } else {
+      hubNote = { text: `Central hub has the latest list (${plural(hub.count)}), checked ${hub.at ? timeAgo(hub.at, now) : 'recently'}.`, warn: false };
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -187,6 +222,9 @@ export function EmergencyContacts({ familyId, readOnly = false }: EmergencyConta
           <p className="text-sm text-muted-foreground">
             {contacts.length} contact{contacts.length === 1 ? '' : 's'} registered
           </p>
+          {hubNote && (
+            <p className={`mt-1 text-xs ${hubNote.warn ? 'text-warning' : 'text-muted-foreground'}`}>{hubNote.text}</p>
+          )}
         </div>
         {!readOnly && formMode !== 'new' && (
           <button
