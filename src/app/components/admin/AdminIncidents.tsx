@@ -422,8 +422,6 @@ export function AdminIncidents() {
         i.deviceId,
         i.typeLabel,
         i.events.length,
-        i.location.found ? i.location.primary : "",
-        i.location.mapUrl ?? "",
         i.delivery === "—" ? "" : i.delivery,
         i.response ? (i.response.status === "handled" ? "Handled" : "On my way") : i.typeLabel === "Cancelled" ? "" : "No response",
         i.response?.by ?? "",
@@ -431,7 +429,7 @@ export function AdminIncidents() {
       ]);
     downloadCsv(
       `carebeacon-incidents-${csvDate(new Date())}.csv`,
-      ["Date", "Time", "Person monitored", "Device MAC", "Type", "Events", "Location", "Map link", "Alert delivery", "Response", "Responded by", "Responded at"],
+      ["Date", "Time", "Person monitored", "Device MAC", "Type", "Events", "Alert delivery", "Response", "Responded by", "Responded at"],
       rows
     );
   };

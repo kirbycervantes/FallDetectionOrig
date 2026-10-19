@@ -29,6 +29,8 @@ interface FallHistoryProps {
   readOnly?: boolean;
   /** the signed-in caregiver, used for "I'm on my way" / "Handled" */
   responder?: { uid: string; name: string };
+  /** family id: its registered emergency contacts are the people you can pick as "on the way" */
+  familyId?: string;
 }
 
 type TypeFilter = 'all' | 'fall' | 'sos' | 'cancelled';
@@ -69,28 +71,22 @@ function smsCounts(raw: any, cancelled: boolean): { failed: number; total: numbe
   return { failed, total: list.length };
 }
 
-function coords(location: unknown): { lat: number; lng: number } | null {
-  if (location && typeof location === 'object') {
-    const c = location as { lat?: unknown; lng?: unknown };
-    if (typeof c.lat === 'number' && typeof c.lng === 'number' && !(c.lat === 0 && c.lng === 0)) return { lat: c.lat, lng: c.lng };
-  }
-  return null;
-}
-
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-export function FallHistory({ deviceId, readOnly = false, responder }: FallHistoryProps) {
+export function FallHistory({ deviceId, readOnly = false, responder, familyId }: FallHistoryProps) {
   const [events, setEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
-  const [confirmHandledId, setConfirmHandledId] = useState<string | null>(null);
+  // who is on the way / who handled it: picked from the registered emergency contacts
+  const [picker, setPicker] = useState<{ eventId: string; mode: ResponseStatus; person: string } | null>(null);
+  const [contactNames, setContactNames] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
@@ -146,6 +142,25 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
     return () => unsubscribe();
   }, [deviceId]);
 
+  useEffect(() => {
+    if (!familyId) { setContactNames([]); return; }
+    const unsub = onValue(ref(db, `families/${familyId}/contacts`), (snap) => {
+      const v = snap.val() || {};
+      const names = Object.values(v)
+        .map((c: any) => (c && typeof c === 'object' ? String(c.name ?? '').trim() : ''))
+        .filter(Boolean);
+      setContactNames([...new Set(names)]);
+    }, () => setContactNames([]));
+    return () => unsub();
+  }, [familyId]);
+
+  // the people you can choose from: the registered contacts, plus the signed-in account if it is not one of them
+  const personOptions = useMemo(() => {
+    const list = [...contactNames];
+    if (responder?.name && !list.some((n) => n.toLowerCase() === responder.name.toLowerCase())) list.push(responder.name);
+    return list;
+  }, [contactNames, responder?.name]);
+
   const filtered = useMemo(() => {
     const today = startOfToday();
     const minTime =
@@ -165,13 +180,19 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
   // reset to page 1 when a filter changes
   useEffect(() => setPage(1), [typeFilter, dateFilter]);
 
-  const respond = async (eventId: string, status: ResponseStatus) => {
-    if (!responder || readOnly) return;
+  const openPicker = (eventId: string, mode: ResponseStatus, current?: string) => {
+    const keep = current && personOptions.includes(current) ? current : '';
+    setActionError('');
+    setPicker({ eventId, mode, person: keep || (personOptions.length === 1 ? personOptions[0] : '') });
+  };
+
+  const respond = async (eventId: string, status: ResponseStatus, person: string) => {
+    if (!responder || readOnly || !person) return;
     setActionError('');
     setSavingId(eventId);
     try {
-      await saveResponse(deviceId, eventId, status, responder);
-      setConfirmHandledId(null);
+      await saveResponse(deviceId, eventId, status, { uid: responder.uid, account: responder.name, person });
+      setPicker(null);
     } catch (err) {
       console.error('Could not save the response:', err);
       setActionError('Could not save your response. Check your connection and try again.');
@@ -182,7 +203,6 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
 
   const handleExport = () => {
     const rows = filtered.map((e) => {
-      const c = coords(e.location);
       const smsResult = e.cancelled ? 'n/a (cancelled)'
         : e.smsTotal === 0 ? 'No SMS record'
         : e.smsFailed === 0 ? 'Sent'
@@ -195,9 +215,6 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
         kindLabel(e.kind),
         e.cancelled ? (e.quiet ? 'Cancelled (no SMS)' : 'Cancelled') : 'Alert sent',
         smsResult,
-        c ? c.lat.toFixed(6) : '',
-        c ? c.lng.toFixed(6) : '',
-        c ? `https://www.google.com/maps?q=${c.lat},${c.lng}` : '',
         r ? (r.status === 'handled' ? 'Handled' : 'On my way') : e.cancelled ? '' : 'No response',
         r ? r.by : '',
         r?.at ? `${csvDate(r.at)} ${csvTime(r.at)}` : '',
@@ -205,7 +222,7 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
     });
     downloadCsv(
       `carebeacon-incidents-${deviceId}-${csvDate(new Date())}.csv`,
-      ['Date', 'Time', 'Type', 'Result', 'SMS', 'Latitude', 'Longitude', 'Map link', 'Response', 'Responded by', 'Responded at'],
+      ['Date', 'Time', 'Type', 'Result', 'SMS', 'Response', 'Responded by', 'Responded at'],
       rows
     );
   };
@@ -434,23 +451,38 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
                         )}
 
                         {!readOnly && responder && event.response?.status !== 'handled' && (
-                          confirmHandledId === event.id ? (
+                          picker?.eventId === event.id ? (
                             <span className="flex flex-wrap items-center gap-2">
-                              <span className="text-xs text-foreground">Mark this alert as handled?</span>
+                              <label htmlFor={`who-${event.id}`} className="text-xs text-foreground">
+                                {picker.mode === 'on_my_way' ? 'Who is on the way?' : 'Who handled it?'}
+                              </label>
+                              <select
+                                id={`who-${event.id}`}
+                                value={picker.person}
+                                onChange={(e) => setPicker({ ...picker, person: e.target.value })}
+                                className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground"
+                              >
+                                <option value="">Choose a contact...</option>
+                                {personOptions.map((n) => (
+                                  <option key={n} value={n}>{n}{n === responder.name ? ' (me)' : ''}</option>
+                                ))}
+                              </select>
                               <button
                                 type="button"
-                                onClick={() => respond(event.id, 'handled')}
-                                disabled={savingId === event.id}
-                                className="rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                                onClick={() => respond(event.id, picker.mode, picker.person)}
+                                disabled={!picker.person || savingId === event.id}
+                                className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 ${
+                                  picker.mode === 'handled' ? 'bg-success' : 'bg-primary'
+                                }`}
                               >
-                                Yes, handled
+                                {picker.mode === 'handled' ? 'Yes, handled' : 'Confirm'}
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setConfirmHandledId(null)}
+                                onClick={() => setPicker(null)}
                                 className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
                               >
-                                Not yet
+                                {picker.mode === 'handled' ? 'Not yet' : 'Cancel'}
                               </button>
                             </span>
                           ) : (
@@ -458,7 +490,7 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
                               {!event.response && (
                                 <button
                                   type="button"
-                                  onClick={() => respond(event.id, 'on_my_way')}
+                                  onClick={() => openPicker(event.id, 'on_my_way')}
                                   disabled={savingId === event.id}
                                   className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
                                 >
@@ -467,7 +499,7 @@ export function FallHistory({ deviceId, readOnly = false, responder }: FallHisto
                               )}
                               <button
                                 type="button"
-                                onClick={() => setConfirmHandledId(event.id)}
+                                onClick={() => openPicker(event.id, 'handled', event.response?.by)}
                                 disabled={savingId === event.id}
                                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
                               >

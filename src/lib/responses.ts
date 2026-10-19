@@ -43,16 +43,20 @@ export function responseLabel(status: ResponseStatus): string {
   return status === 'handled' ? 'Handled' : "On my way";
 }
 
+/**
+ * `person` = the registered contact who is on the way / who handled it (chosen from the family's contacts).
+ * `account` = the signed-in website account that pressed the button (kept for the record).
+ */
 export function saveResponse(
   deviceId: string,
   eventId: string,
   status: ResponseStatus,
-  who: { uid: string; name: string }
+  who: { uid: string; account: string; person: string }
 ) {
   const now = new Date().toISOString();
   const patch =
     status === 'on_my_way'
-      ? { status, onMyWayBy: who.name, onMyWayUid: who.uid, onMyWayAt: now }
-      : { status, handledBy: who.name, handledUid: who.uid, handledAt: now };
+      ? { status, onMyWayBy: who.person, onMyWayAccount: who.account, onMyWayUid: who.uid, onMyWayAt: now }
+      : { status, handledBy: who.person, handledAccount: who.account, handledUid: who.uid, handledAt: now };
   return update(ref(db, `events/${deviceId}/${eventId}/response`), patch);
 }

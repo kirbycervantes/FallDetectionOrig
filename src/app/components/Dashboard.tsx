@@ -791,6 +791,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
                 <FallHistory
                   deviceId={deviceId!}
                   readOnly={readOnly}
+                  familyId={familyId ?? undefined}
                   responder={user ? { uid: user.uid, name: user.displayName || user.email?.split('@')[0] || 'Caregiver' } : undefined}
                 />
               )}
