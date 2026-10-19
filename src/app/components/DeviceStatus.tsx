@@ -1,45 +1,11 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { Clock, MapPin, Cpu, Signal, Wifi } from 'lucide-react';
+import { Clock, MapPin, Cpu } from 'lucide-react';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonCard } from './ui/skeleton';
 import { formatDuration, isDeviceOnline, lastSeen, timeAgo, useNow } from '../../lib/deviceStatus';
 
 interface DeviceStatusProps {
   deviceId: string;
-}
-
-/** WiFi RSSI (dBm) -> 0..4 bars */
-function wifiBars(rssi: number) {
-  if (rssi >= -55) return 4;
-  if (rssi >= -67) return 3;
-  if (rssi >= -75) return 2;
-  if (rssi >= -85) return 1;
-  return 0;
-}
-
-/** SIM800L AT+CSQ value (0-31, 99 = unknown) -> 0..4 bars */
-function gsmBars(csq: number) {
-  if (csq >= 20) return 4;
-  if (csq >= 15) return 3;
-  if (csq >= 10) return 2;
-  if (csq >= 2) return 1;
-  return 0;
-}
-
-const BAR_LABEL = ['No signal', 'Weak', 'Fair', 'Good', 'Excellent'];
-
-function Bars({ value }: { value: number }) {
-  return (
-    <span className="inline-flex items-end gap-0.5 h-4" aria-hidden="true">
-      {[1, 2, 3, 4].map((b) => (
-        <span
-          key={b}
-          className={`w-1 rounded-full ${b <= value ? 'bg-success' : 'bg-border'}`}
-          style={{ height: `${b * 3 + 4}px` }}
-        />
-      ))}
-    </span>
-  );
 }
 
 function Tile({ icon, label, children, sub }: { icon: ReactNode; label: string; children: ReactNode; sub?: ReactNode }) {
@@ -91,11 +57,6 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
       ? reportedUptime + Math.max(0, now - seen.getTime())
       : null;
 
-  const wifiRssi = Number(device?.wifiRssi);
-  const hasWifi = Number.isFinite(wifiRssi) && wifiRssi < 0;
-  const gsmCsq = Number(device?.gsmSignal);
-  const hasGsm = Number.isFinite(gsmCsq) && gsmCsq >= 0 && gsmCsq <= 31;
-
   return (
     <div className="space-y-6">
       <div>
@@ -138,41 +99,6 @@ export function DeviceStatus({ deviceId }: DeviceStatusProps) {
               <span className="text-success">Fix acquired</span>
             ) : (
               <span className="text-warning">No fix</span>
-            )}
-          </Tile>
-
-          <Tile icon={<Signal className="size-5" />} label="Signal Strength">
-            {!online ? (
-              <span className="text-muted-foreground">Unknown (hub offline)</span>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <Signal className="size-3.5 text-muted-foreground" />
-                  <span className="w-20 text-xs text-muted-foreground font-normal">Mobile (SIM)</span>
-                  {hasGsm ? (
-                    <>
-                      <Bars value={gsmBars(gsmCsq)} />
-                      <span>{BAR_LABEL[gsmBars(gsmCsq)]}</span>
-                      <span className="text-xs text-muted-foreground font-normal">({gsmCsq}/31)</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground font-normal">Not reported</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Wifi className="size-3.5 text-muted-foreground" />
-                  <span className="w-20 text-xs text-muted-foreground font-normal">WiFi</span>
-                  {hasWifi ? (
-                    <>
-                      <Bars value={wifiBars(wifiRssi)} />
-                      <span>{BAR_LABEL[wifiBars(wifiRssi)]}</span>
-                      <span className="text-xs text-muted-foreground font-normal">({wifiRssi} dBm)</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground font-normal">Not reported</span>
-                  )}
-                </div>
-              </div>
             )}
           </Tile>
         </div>

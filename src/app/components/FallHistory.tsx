@@ -36,12 +36,20 @@ interface FallHistoryProps {
 
 type TypeFilter = 'all' | 'fall' | 'sos' | 'cancelled';
 type DateFilter = 'all' | 'today' | '7d' | '30d';
+type ResponseFilter = 'any' | 'none' | 'on_my_way' | 'handled' | 'sms_failed';
 
 const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'fall', label: 'Falls' },
   { id: 'sos', label: 'Manual SOS' },
   { id: 'cancelled', label: 'Cancelled' },
+];
+
+const RESPONSE_FILTERS: { id: ResponseFilter; label: string }[] = [
+  { id: 'none', label: 'No response yet' },
+  { id: 'on_my_way', label: 'On the way' },
+  { id: 'handled', label: 'Handled' },
+  { id: 'sms_failed', label: 'SMS failed' },
 ];
 
 const DATE_FILTERS: { id: DateFilter; label: string }[] = [
@@ -84,6 +92,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [respFilter, setRespFilter] = useState<ResponseFilter>('any');
   const [refreshing, setRefreshing] = useState(false);
   // who is on the way / who handled it: picked from the registered emergency contacts
   const [picker, setPicker] = useState<{ eventId: string; mode: ResponseStatus; person: string; step: 'choose' | 'confirm' } | null>(null);
@@ -95,6 +104,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const handleRefresh = () => {
     setTypeFilter('all');
     setDateFilter('all');
+    setRespFilter('any');
     setPage(1);
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 600);
@@ -171,15 +181,23 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
       0;
     return events.filter((e) => {
       if (e.timestamp.getTime() < minTime) return false;
-      if (typeFilter === 'cancelled') return e.cancelled;
-      if (typeFilter === 'fall') return e.kind === 'fall' && !e.cancelled;
-      if (typeFilter === 'sos') return e.kind === 'sos' && !e.cancelled;
+      if (typeFilter === 'cancelled' && !e.cancelled) return false;
+      if (typeFilter === 'fall' && !(e.kind === 'fall' && !e.cancelled)) return false;
+      if (typeFilter === 'sos' && !(e.kind === 'sos' && !e.cancelled)) return false;
+      // response / SMS filter: only for alerts that were sent (a cancelled alert has no response)
+      if (respFilter !== 'any') {
+        if (e.cancelled) return false;
+        if (respFilter === 'none' && e.response) return false;
+        if (respFilter === 'on_my_way' && e.response?.status !== 'on_my_way') return false;
+        if (respFilter === 'handled' && e.response?.status !== 'handled') return false;
+        if (respFilter === 'sms_failed' && e.smsFailed === 0) return false;
+      }
       return true;
     });
-  }, [events, typeFilter, dateFilter]);
+  }, [events, typeFilter, dateFilter, respFilter]);
 
   // reset to page 1 when a filter changes
-  useEffect(() => setPage(1), [typeFilter, dateFilter]);
+  useEffect(() => setPage(1), [typeFilter, dateFilter, respFilter]);
 
   const openPicker = (eventId: string, mode: ResponseStatus, current?: string) => {
     const keep = current && personOptions.includes(current) ? current : '';
@@ -259,6 +277,15 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const pageEvents = filtered.slice(pageStart, pageStart + PAGE_SIZE);
   const latestId = events[0]?.id;
 
+  const respCount = (id: ResponseFilter) => {
+    const sent = events.filter((e) => !e.cancelled);
+    return id === 'none' ? sent.filter((e) => !e.response).length
+      : id === 'on_my_way' ? sent.filter((e) => e.response?.status === 'on_my_way').length
+      : id === 'handled' ? sent.filter((e) => e.response?.status === 'handled').length
+      : id === 'sms_failed' ? sent.filter((e) => e.smsFailed > 0).length
+      : sent.length;
+  };
+
   const typeCount = (id: TypeFilter) =>
     id === 'all' ? events.length :
     id === 'cancelled' ? events.filter((e) => e.cancelled).length :
@@ -324,6 +351,17 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
             >
               {DATE_FILTERS.map((f) => (
                 <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+            <select
+              value={respFilter}
+              onChange={(e) => setRespFilter(e.target.value as ResponseFilter)}
+              aria-label="Filter by response or SMS result"
+              className="px-3 py-1.5 rounded-lg border border-border bg-card text-sm text-foreground"
+            >
+              <option value="any">Any response</option>
+              {RESPONSE_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label} ({respCount(f.id)})</option>
               ))}
             </select>
             <button
