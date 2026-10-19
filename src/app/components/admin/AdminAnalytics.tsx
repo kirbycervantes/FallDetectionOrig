@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { familyDeviceId, personName, deviceState, flattenEvents } from "./adminData";
+import { isCountedFall } from "../../../lib/events";
 import { useNow } from "../../../lib/deviceStatus";
 import { SkeletonChart, SkeletonCard } from "../ui/skeleton";
 import { 
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { Activity, Users, AlertTriangle, ShieldCheck } from "lucide-react";
 
@@ -91,7 +92,7 @@ export function AdminAnalytics() {
       let resolved = 0;
       events.forEach(ev => {
         if (ev.status !== 'cancelled') total++;
-        if (ev.status === 'confirmed' || ev.status === 'resolved') resolved++;
+        if (isCountedFall(ev.raw)) resolved++;   // confirmed falls: not Manual SOS, not cancelled (same rule as Total Falls on Fall History)
         const day = chartData.find(d => d.key === ev.date.toDateString());
         if (day) {
           if (ev.status === 'cancelled') day.cancelled++;
@@ -172,7 +173,7 @@ export function AdminAnalytics() {
               <ShieldCheck className="size-6" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground font-medium">Resolved/Confirmed</p>
+              <p className="text-sm text-muted-foreground font-medium">Confirmed falls</p>
               <p className="text-2xl font-bold text-foreground">{stats.resolvedIncidents}</p>
             </div>
           </div>
