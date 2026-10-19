@@ -787,7 +787,13 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             {/* key = page: the page re-mounts (and fades in) every time you switch */}
             <div key={activeTab} className="animate-in fade-in duration-300">
               {activeTab === 'map' && <LocationMap deviceId={deviceId!} />}
-              {activeTab === 'history' && <FallHistory deviceId={deviceId!} />}
+              {activeTab === 'history' && (
+                <FallHistory
+                  deviceId={deviceId!}
+                  readOnly={readOnly}
+                  responder={user ? { uid: user.uid, name: user.displayName || user.email?.split('@')[0] || 'Caregiver' } : undefined}
+                />
+              )}
               {activeTab === 'device' && <DeviceStatus deviceId={deviceId!} />}
               {activeTab === 'contacts' && <EmergencyContacts familyId={familyId!} readOnly={readOnly} />}
               {activeTab === 'settings' && !readOnly && <UserSettings />}

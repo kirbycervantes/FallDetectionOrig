@@ -2,29 +2,36 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
-import { buildRows, type AlertRow } from "./deliveryModel";
+import { buildRows, channelKind, type AlertRow } from "./deliveryModel";
 import { fmtTime } from "./deliveryUi";
 
-function StatusPill({ ok }: { ok: boolean }) {
+function StatusPill({ row }: { row: AlertRow }) {
+  const state = row.sms !== "Delivered" ? "Failed" : row.partial ? "Partly failed" : "Delivered";
+  const cls = state === "Delivered" ? "border-success/25 bg-success/10 text-success"
+    : state === "Partly failed" ? "border-warning/30 bg-warning/10 text-warning"
+    : "border-destructive/25 bg-destructive/10 text-destructive";
   return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-lg border px-2 py-1 text-xs font-medium ${
-        ok ? "border-success/25 bg-success/10 text-success" : "border-destructive/25 bg-destructive/10 text-destructive"
-      }`}
-    >
-      {ok ? "Delivered" : "Failed"}
+    <span className={`inline-flex whitespace-nowrap rounded-lg border px-2 py-1 text-xs font-medium ${cls}`}>
+      {state}
     </span>
   );
 }
 
 function RecipientCell({ row }: { row: AlertRow }) {
   const first = row.recipients[0];
+  // contacts the hub could not text (shown so the admin knows who did not get the alert)
+  const failedNames = row.hasReceipts
+    ? row.recipients.filter((r) => channelKind(r.sms.status) === "failure").map((r) => r.name)
+    : [];
   return (
     <div className="flex flex-col">
       <span className="text-foreground">{first?.name ?? "—"}</span>
       <span className="text-xs text-muted-foreground">
         {first?.phone ?? "—"}{row.recipients.length > 1 ? ` · +${row.recipients.length - 1} more` : ""}
       </span>
+      {failedNames.length > 0 && (
+        <span className="text-xs text-destructive">SMS failed: {failedNames.join(", ")}</span>
+      )}
     </div>
   );
 }
@@ -53,7 +60,7 @@ export function AdminAlertDelivery() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("today");
   const [search, setSearch] = useState("");
-  const [filterResult, setFilterResult] = useState<"all" | "delivered" | "failed">("all");
+  const [filterResult, setFilterResult] = useState<"all" | "delivered" | "partial" | "failed">("all");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const tableTopRef = useRef<HTMLDivElement | null>(null);
@@ -91,7 +98,8 @@ export function AdminAlertDelivery() {
       || r.patientName.toLowerCase().includes(q)
       || r.deviceId.toLowerCase().includes(q)
       || r.recipients.some((x) => x.name.toLowerCase().includes(q));
-    const matchesResult = filterResult === "all" || (filterResult === "delivered" ? r.delivered : !r.delivered);
+    const matchesResult = filterResult === "all"
+      || (filterResult === "delivered" ? r.delivered && !r.partial : filterResult === "partial" ? r.partial : !r.delivered);
     return matchesSearch && matchesResult;
   });
 
@@ -184,6 +192,7 @@ export function AdminAlertDelivery() {
             >
               <option value="all">All results</option>
               <option value="delivered">Delivered</option>
+              <option value="partial">Partly failed</option>
               <option value="failed">Failed</option>
             </select>
           </div>
@@ -224,7 +233,7 @@ export function AdminAlertDelivery() {
                         </td>
                         <td className="px-4 py-3"><AlertTypeBadge type={row.alertType} /></td>
                         <td className="px-4 py-3"><RecipientCell row={row} /></td>
-                        <td className="px-4 py-3"><StatusPill ok={row.sms === "Delivered"} /></td>
+                        <td className="px-4 py-3"><StatusPill row={row} /></td>
                       </tr>
                     ))
                   )}
@@ -250,7 +259,7 @@ export function AdminAlertDelivery() {
                     <div className="text-sm"><RecipientCell row={row} /></div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">SMS</span>
-                      <StatusPill ok={row.sms === "Delivered"} />
+                      <StatusPill row={row} />
                     </div>
                   </li>
                 ))

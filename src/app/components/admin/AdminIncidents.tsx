@@ -3,16 +3,18 @@ import { AdminLayout } from "./AdminLayout";
 import { db, ref, onValue } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Search, Filter, CalendarDays } from "lucide-react";
+import { Search, Filter, CalendarDays, Download } from "lucide-react";
 import { familyDeviceId, personName, flattenEvents } from "./adminData";
 import { buildRows, type AlertRow } from "./deliveryModel";
+import { parseResponse, type EventResponse } from "../../../lib/responses";
+import { downloadCsv, csvDate, csvTime } from "../../../lib/exportCsv";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
 type EventKind = "fall" | "sos" | "cancelled";
-type DeliveryState = "Delivered" | "Failed" | "—";
+type DeliveryState = "Delivered" | "Partly failed" | "Failed" | "—";
 
 /** Events on the same device less than this far apart belong to one incident. */
 const GROUP_WINDOW_MS = 30 * 60 * 1000;
@@ -31,6 +33,7 @@ interface IncEvent {
   label: string;
   location: LocInfo | null;
   delivery: DeliveryState;
+  response: EventResponse | null;
 }
 
 interface Incident {
@@ -43,6 +46,7 @@ interface Incident {
   startedAt: Date;
   latestActivity: Date;
   delivery: DeliveryState;
+  response: EventResponse | null;
   location: { primary: string; detail: string; mapUrl: string | null; found: boolean };
   recipients: { name: string; phone: string }[];
 }
@@ -118,7 +122,8 @@ function buildIncidents(events: any, families: any, devices: any): Incident[] {
       kind,
       label: eventLabel(kind),
       location: parseLocation(ev.raw.location),
-      delivery: kind === "cancelled" || !row ? "—" : row.delivered ? "Delivered" : "Failed",
+      delivery: kind === "cancelled" || !row ? "—" : !row.delivered ? "Failed" : row.partial ? "Partly failed" : "Delivered",
+      response: kind === "cancelled" ? null : parseResponse(ev.raw),
     };
     if (!byDevice.has(ev.deviceId)) byDevice.set(ev.deviceId, []);
     byDevice.get(ev.deviceId)!.push(item);
@@ -147,7 +152,14 @@ function buildIncidents(events: any, families: any, devices: any): Incident[] {
 
       let delivery: DeliveryState = "—";
       if (live.some((e) => e.delivery === "Delivered")) delivery = "Delivered";
+      else if (live.some((e) => e.delivery === "Partly failed")) delivery = "Partly failed";
       else if (live.some((e) => e.delivery === "Failed")) delivery = "Failed";
+
+      // what the caregivers said they did: Handled beats On my way, newest first
+      const responded = [...live].reverse().filter((e) => e.response);
+      const response = responded.find((e) => e.response!.status === "handled")?.response
+        ?? responded.find((e) => e.response!.status === "on_my_way")?.response
+        ?? null;
 
       // Location: latest event that reported one, otherwise the device's last known position
       const reported = [...evs].reverse().find((e) => e.location && e.location.kind !== "unavailable");
@@ -177,6 +189,7 @@ function buildIncidents(events: any, families: any, devices: any): Incident[] {
         startedAt: evs[0].date,
         latestActivity: evs[evs.length - 1].date,
         delivery,
+        response,
         location,
         recipients,
       });
@@ -207,8 +220,28 @@ function TypeBadge({ label }: { label: string }) {
 
 function DeliveryBadge({ state }: { state: DeliveryState }) {
   if (state === "—") return <span className="text-xs text-muted-foreground">—</span>;
-  const cls = state === "Delivered" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30";
+  const cls = state === "Delivered" ? "bg-success/10 text-success border-success/30"
+    : state === "Partly failed" ? "bg-warning/10 text-warning border-warning/30"
+    : "bg-destructive/10 text-destructive border-destructive/30";
   return <span className={`inline-flex whitespace-nowrap rounded-lg border px-2 py-1 text-xs font-medium ${cls}`}>{state}</span>;
+}
+
+function ResponseBadge({ response, compact = false }: { response: EventResponse | null; compact?: boolean }) {
+  if (!response) return <span className="text-xs text-muted-foreground">No response</span>;
+  const handled = response.status === "handled";
+  const cls = handled ? "bg-success/10 text-success border-success/30" : "bg-primary/10 text-primary border-primary/30";
+  return (
+    <span className="inline-flex flex-col">
+      <span className={`inline-flex w-fit whitespace-nowrap rounded-lg border px-2 py-1 text-xs font-medium ${cls}`}>
+        {handled ? "Handled" : "On the way"}
+      </span>
+      {!compact && (
+        <span className="mt-0.5 text-[11px] text-muted-foreground">
+          {response.by}{response.at ? ` · ${fmt(response.at)}` : ""}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function LocationCell({ loc }: { loc: Incident["location"] }) {
@@ -253,6 +286,10 @@ function IncidentView({ inc }: { inc: Incident }) {
           <dd className="mt-0.5"><DeliveryBadge state={inc.delivery} /></dd>
         </div>
         <div className="sm:col-span-2">
+          <dt className="text-xs text-muted-foreground">Caregiver response</dt>
+          <dd className="mt-0.5"><ResponseBadge response={inc.response} /></dd>
+        </div>
+        <div className="sm:col-span-2">
           <dt className="mb-1 text-xs text-muted-foreground">Location</dt>
           <dd><LocationCell loc={inc.location} /></dd>
         </div>
@@ -283,6 +320,7 @@ function IncidentView({ inc }: { inc: Incident }) {
                 <time className="text-xs text-muted-foreground" dateTime={e.date.toISOString()}>{fmtFull(e.date)}</time>
                 <span className="font-medium text-foreground">{e.label}</span>
                 <DeliveryBadge state={e.delivery} />
+                {e.response && <ResponseBadge response={e.response} compact />}
               </div>
             </li>
           ))}
@@ -323,7 +361,7 @@ export function AdminIncidents() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | EventKind>("all");
-  const [deliveryFilter, setDeliveryFilter] = useState<"all" | "Delivered" | "Failed">("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | "Delivered" | "Partly failed" | "Failed">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
@@ -374,6 +412,30 @@ export function AdminIncidents() {
   };
 
   const selected = incidents.find((i) => i.id === selectedId) ?? null;
+  const handleExport = () => {
+    const rows = [...filtered]
+      .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())
+      .map((i) => [
+        csvDate(i.startedAt),
+        csvTime(i.startedAt),
+        i.patientName,
+        i.deviceId,
+        i.typeLabel,
+        i.events.length,
+        i.location.found ? i.location.primary : "",
+        i.location.mapUrl ?? "",
+        i.delivery === "—" ? "" : i.delivery,
+        i.response ? (i.response.status === "handled" ? "Handled" : "On my way") : i.typeLabel === "Cancelled" ? "" : "No response",
+        i.response?.by ?? "",
+        i.response?.at ? `${csvDate(i.response.at)} ${csvTime(i.response.at)}` : "",
+      ]);
+    downloadCsv(
+      `carebeacon-incidents-${csvDate(new Date())}.csv`,
+      ["Date", "Time", "Person monitored", "Device MAC", "Type", "Events", "Location", "Map link", "Alert delivery", "Response", "Responded by", "Responded at"],
+      rows
+    );
+  };
+
   const clearFilters = () => { setSearch(""); setRange("all"); setFrom(""); setTo(""); setTypeFilter("all"); setDeliveryFilter("all"); };
 
   return (
@@ -420,6 +482,7 @@ export function AdminIncidents() {
               <select id="inc-delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as any)} className={selectCls}>
                 <option value="all">Any alert delivery</option>
                 <option value="Delivered">Delivered</option>
+                <option value="Partly failed">Partly failed</option>
                 <option value="Failed">Failed</option>
               </select>
             </div>
@@ -440,9 +503,17 @@ export function AdminIncidents() {
 
           <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
             <span>{filtered.length} incident{filtered.length === 1 ? "" : "s"}</span>
-            {filtersOn && (
-              <button type="button" onClick={clearFilters} className="font-medium text-primary hover:underline">Clear filters</button>
-            )}
+            <div className="flex items-center gap-4">
+              {filtersOn && (
+                <button type="button" onClick={clearFilters} className="font-medium text-primary hover:underline">Clear filters</button>
+              )}
+              <button type="button" onClick={handleExport} disabled={filtered.length === 0}
+                title="Download the listed incidents (follows the filters above) as a CSV file for Excel"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40">
+                <Download className="size-3.5" aria-hidden="true" />
+                Export CSV
+              </button>
+            </div>
           </div>
         </div>
 
@@ -453,7 +524,7 @@ export function AdminIncidents() {
           <div ref={tableTopRef} className="scroll-mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Desktop table */}
             <div className="hidden w-full overflow-x-auto md:block">
-              <table className="w-full min-w-[820px] text-left text-sm">
+              <table className="w-full min-w-[960px] text-left text-sm">
                 <caption className="sr-only">Incidents, newest first</caption>
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
@@ -462,13 +533,14 @@ export function AdminIncidents() {
                     <th scope="col" className="px-4 py-3 font-medium">Type</th>
                     <th scope="col" className="px-4 py-3 font-medium">Location</th>
                     <th scope="col" className="px-4 py-3 font-medium">Alert delivery</th>
+                    <th scope="col" className="px-4 py-3 font-medium">Response</th>
                     <th scope="col" className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {pageRows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                      <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                         {filtersOn ? "No incidents match these filters" : "No incidents recorded"}
                       </td>
                     </tr>
@@ -485,6 +557,7 @@ export function AdminIncidents() {
                         <td className="px-4 py-3"><TypeBadge label={inc.typeLabel} /></td>
                         <td className="max-w-[260px] px-4 py-3"><LocationCell loc={inc.location} /></td>
                         <td className="px-4 py-3"><DeliveryBadge state={inc.delivery} /></td>
+                        <td className="px-4 py-3">{inc.typeLabel === "Cancelled" ? <span className="text-xs text-muted-foreground">—</span> : <ResponseBadge response={inc.response} />}</td>
                         <td className="px-4 py-3 text-right">
                           <button type="button" onClick={() => setSelectedId(inc.id)}
                             className="whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium text-primary hover:bg-primary/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -517,7 +590,10 @@ export function AdminIncidents() {
                     </div>
                     <LocationCell loc={inc.location} />
                     <div className="flex items-center justify-between gap-2">
-                      <DeliveryBadge state={inc.delivery} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DeliveryBadge state={inc.delivery} />
+                        {inc.typeLabel !== "Cancelled" && <ResponseBadge response={inc.response} compact />}
+                      </div>
                       <button type="button" onClick={() => setSelectedId(inc.id)}
                         className="whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium text-primary hover:bg-primary/10">
                         Details

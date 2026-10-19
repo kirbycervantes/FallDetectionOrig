@@ -47,6 +47,10 @@ export interface AlertRow {
   overall: Overall;
   /** The hub sends the SMS the moment a fall / SOS happens, so an alert counts as delivered unless it failed or nobody was registered. */
   delivered: boolean;
+  /** How many registered contacts the hub reported a failed SMS for */
+  failedRecipients: number;
+  /** Some contacts got the SMS and some did not */
+  partial: boolean;
   explanation: string;
   hasReceipts: boolean;
   recipientsConfigured: boolean;
@@ -186,19 +190,25 @@ export function alertTypeFor(status: string, type?: string): string {
   return "Alert";
 }
 
-export function finalizeRow(base: Omit<AlertRow, "sms" | "overall" | "explanation" | "delivered">): AlertRow {
+export function finalizeRow(base: Omit<AlertRow, "sms" | "overall" | "explanation" | "delivered" | "failedRecipients" | "partial">): AlertRow {
   const rawSms = bestStatus(base.recipients.map((r) => r.sms.status));
   // The hub sends the SMS the moment a fall / SOS happens, so anything not reported as failed is Delivered.
   const noRecipient = !base.recipientsConfigured;
   const sms: ChannelStatus = noRecipient ? "Failed" : channelKind(rawSms) === "failure" ? "Failed" : "Delivered";
   const delivered = sms === "Delivered";
+  // the hub reports every contact on its own, so a failure for one contact is not hidden by the others
+  const failedRecipients = base.hasReceipts ? base.recipients.filter((r) => channelKind(r.sms.status) === "failure").length : 0;
+  const partial = !noRecipient && failedRecipients > 0 && failedRecipients < base.recipients.length;
   return {
     ...base,
     sms,
     delivered,
+    failedRecipients,
+    partial,
     overall: delivered ? "Successful" : "Failed",
     explanation: noRecipient
       ? "No phone number is registered for this device, so nobody could be alerted."
+      : partial ? `The SMS failed for ${failedRecipients} of ${base.recipients.length} contacts.`
       : delivered ? "The SMS was sent instantly." : "The SMS failed.",
   };
 }

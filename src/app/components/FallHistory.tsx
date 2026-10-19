@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw } from 'lucide-react';
+import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw, Download, Navigation } from 'lucide-react';
 import { resolveEventTime, validDate } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonList } from './ui/skeleton';
 import { eventKind, isCancelled, isStoppedQuietly, kindLabel, type EventKind } from '../../lib/events';
+import { parseResponse, saveResponse, type EventResponse, type ResponseStatus } from '../../lib/responses';
+import { downloadCsv, csvDate, csvTime } from '../../lib/exportCsv';
+import { channelKind, normalizeStatus } from './admin/deliveryModel';
 
 interface FallEvent {
   id: string;
@@ -14,10 +17,18 @@ interface FallEvent {
   cancelledAt: Date | null;
   offline: boolean;
   location: unknown;
+  response: EventResponse | null;
+  /** contacts the hub could not text / contacts it tried to text */
+  smsFailed: number;
+  smsTotal: number;
 }
 
 interface FallHistoryProps {
   deviceId: string;
+  /** read-only view (administrator looking at a family): no buttons */
+  readOnly?: boolean;
+  /** the signed-in caregiver, used for "I'm on my way" / "Handled" */
+  responder?: { uid: string; name: string };
 }
 
 type TypeFilter = 'all' | 'fall' | 'sos' | 'cancelled';
@@ -50,19 +61,38 @@ function formatEventLocation(location: unknown): string {
   return 'Location unavailable';
 }
 
+// How many contacts the hub reported a failed SMS for (events/<device>/<event>/delivery/contactN/sms)
+function smsCounts(raw: any, cancelled: boolean): { failed: number; total: number } {
+  if (cancelled || !raw?.delivery || typeof raw.delivery !== 'object') return { failed: 0, total: 0 };
+  const list = Object.values(raw.delivery).filter((d: any) => d && typeof d === 'object') as any[];
+  const failed = list.filter((d) => channelKind(normalizeStatus(d.sms?.status)) === 'failure').length;
+  return { failed, total: list.length };
+}
+
+function coords(location: unknown): { lat: number; lng: number } | null {
+  if (location && typeof location === 'object') {
+    const c = location as { lat?: unknown; lng?: unknown };
+    if (typeof c.lat === 'number' && typeof c.lng === 'number' && !(c.lat === 0 && c.lng === 0)) return { lat: c.lat, lng: c.lng };
+  }
+  return null;
+}
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-export function FallHistory({ deviceId }: FallHistoryProps) {
+export function FallHistory({ deviceId, readOnly = false, responder }: FallHistoryProps) {
   const [events, setEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmHandledId, setConfirmHandledId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   // Clears the filters and goes back to the first page (events themselves are already live)
   const handleRefresh = () => {
@@ -83,15 +113,20 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
           .filter((key) => data[key] && typeof data[key] === 'object')
           .map((key) => {
             const raw = data[key];
+            const cancelled = isCancelled(raw);
+            const sms = smsCounts(raw, cancelled);
             return {
               id: key,
               timestamp: resolveEventTime(key, raw.timestamp),
               kind: eventKind(raw),
-              cancelled: isCancelled(raw),
+              cancelled,
               quiet: isStoppedQuietly(raw),
               cancelledAt: validDate(raw.cancelledAt),
               offline: raw.offline === true,
               location: raw.location ?? null,
+              response: parseResponse(raw),
+              smsFailed: sms.failed,
+              smsTotal: sms.total,
             };
           })
           .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -129,6 +164,51 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
 
   // reset to page 1 when a filter changes
   useEffect(() => setPage(1), [typeFilter, dateFilter]);
+
+  const respond = async (eventId: string, status: ResponseStatus) => {
+    if (!responder || readOnly) return;
+    setActionError('');
+    setSavingId(eventId);
+    try {
+      await saveResponse(deviceId, eventId, status, responder);
+      setConfirmHandledId(null);
+    } catch (err) {
+      console.error('Could not save the response:', err);
+      setActionError('Could not save your response. Check your connection and try again.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleExport = () => {
+    const rows = filtered.map((e) => {
+      const c = coords(e.location);
+      const smsResult = e.cancelled ? 'n/a (cancelled)'
+        : e.smsTotal === 0 ? 'No SMS record'
+        : e.smsFailed === 0 ? 'Sent'
+        : e.smsFailed === e.smsTotal ? 'Failed'
+        : `Failed for ${e.smsFailed} of ${e.smsTotal} contacts`;
+      const r = e.response;
+      return [
+        csvDate(e.timestamp),
+        csvTime(e.timestamp),
+        kindLabel(e.kind),
+        e.cancelled ? (e.quiet ? 'Cancelled (no SMS)' : 'Cancelled') : 'Alert sent',
+        smsResult,
+        c ? c.lat.toFixed(6) : '',
+        c ? c.lng.toFixed(6) : '',
+        c ? `https://www.google.com/maps?q=${c.lat},${c.lng}` : '',
+        r ? (r.status === 'handled' ? 'Handled' : 'On my way') : e.cancelled ? '' : 'No response',
+        r ? r.by : '',
+        r?.at ? `${csvDate(r.at)} ${csvTime(r.at)}` : '',
+      ];
+    });
+    downloadCsv(
+      `carebeacon-incidents-${deviceId}-${csvDate(new Date())}.csv`,
+      ['Date', 'Time', 'Type', 'Result', 'SMS', 'Latitude', 'Longitude', 'Map link', 'Response', 'Responded by', 'Responded at'],
+      rows
+    );
+  };
 
   if (loading) {
     return (
@@ -236,8 +316,25 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
               <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={filtered.length === 0}
+              aria-label="Export the listed events as a CSV file"
+              title="Export the listed events (follows the filters above) as a CSV file for Excel"
+              className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="size-4" />
+              Export CSV
+            </button>
           </div>
         </div>
+
+        {actionError && (
+          <p role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {actionError}
+          </p>
+        )}
 
         <div className="space-y-3">
           {pageEvents.map((event) => {
@@ -305,7 +402,82 @@ export function FallHistory({ deviceId }: FallHistoryProps) {
                           <span className="text-xs text-foreground">Happened offline, uploaded later</span>
                         </div>
                       )}
+                      {!event.cancelled && event.smsFailed > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 rounded-lg">
+                          <AlertTriangle className="size-4 text-destructive shrink-0" />
+                          <span className="text-xs font-medium text-destructive">
+                            {event.smsFailed === event.smsTotal
+                              ? 'SMS failed - nobody was texted'
+                              : `SMS failed for ${event.smsFailed} of ${event.smsTotal} contacts`}
+                          </span>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Response: "I'm on my way" / "Handled" */}
+                    {!event.cancelled && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                        {event.response ? (
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                              event.response.status === 'handled' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'
+                            }`}
+                          >
+                            {event.response.status === 'handled'
+                              ? <CheckCircle className="size-4 shrink-0" />
+                              : <Navigation className="size-4 shrink-0" />}
+                            {event.response.status === 'handled' ? 'Handled' : 'On the way'} - {event.response.by}
+                            {event.response.at ? ` · ${event.response.at.toLocaleString()}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No one has responded yet</span>
+                        )}
+
+                        {!readOnly && responder && event.response?.status !== 'handled' && (
+                          confirmHandledId === event.id ? (
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs text-foreground">Mark this alert as handled?</span>
+                              <button
+                                type="button"
+                                onClick={() => respond(event.id, 'handled')}
+                                disabled={savingId === event.id}
+                                className="rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                              >
+                                Yes, handled
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmHandledId(null)}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                              >
+                                Not yet
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="flex flex-wrap items-center gap-2">
+                              {!event.response && (
+                                <button
+                                  type="button"
+                                  onClick={() => respond(event.id, 'on_my_way')}
+                                  disabled={savingId === event.id}
+                                  className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                                >
+                                  I'm on my way
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setConfirmHandledId(event.id)}
+                                disabled={savingId === event.id}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                              >
+                                Handled
+                              </button>
+                            </span>
+                          )
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
