@@ -213,8 +213,12 @@ export function UserSettings() {
         setPhoneMsg({ type: 'error', text: 'This phone number is already registered to another account.' });
         return;
       }
-    } catch {
-      setPhoneMsg({ type: 'error', text: 'Could not check the phone number. Please try again.' });
+    } catch (checkErr: any) {
+      console.error('[PHONE CHECK] failed:', checkErr);
+      setPhoneMsg({
+        type: 'error',
+        text: 'Could not check the phone number. Please try again.' + (checkErr?.code ? ` (${checkErr.code})` : checkErr?.message ? ` (${checkErr.message})` : ''),
+      });
       return;
     }
 
