@@ -14,7 +14,7 @@ import { SkeletonPage } from './components/ui/skeleton';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accessStatus, setAccessStatus] = useState<'active' | 'pending' | 'suspended' | 'loading'>('loading');
+  const [accessStatus, setAccessStatus] = useState<'active' | 'pending' | 'suspended' | 'rejected' | 'loading'>('loading');
   const [userRole, setUserRole] = useState<'caregiver' | 'admin' | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -62,7 +62,7 @@ export default function App() {
     statusUnsubscribe = onValue(userStatusRef, (snapshot: any) => {
       if (snapshot.exists()) {
         const status = snapshot.val();
-        setAccessStatus(status === 'active' ? 'active' : (status === 'suspended' ? 'suspended' : 'pending'));
+        setAccessStatus(status === 'active' ? 'active' : (status === 'suspended' ? 'suspended' : (status === 'rejected' ? 'rejected' : 'pending')));
       } else {
         // No status record — default to active
         setAccessStatus('active');
@@ -178,7 +178,31 @@ export default function App() {
             Your access to CareBeacon has been suspended by an administrator. Please contact support if you believe this is a mistake.
           </p>
           <button
-            onClick={() => setShowLogoutConfirm(true)}
+            onClick={() => signOut(auth)}
+            className="w-full py-2 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl transition"
+          >
+            <LogOut className="size-4" />
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function RejectedScreen() {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center shadow-lg">
+          <div className="size-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertOctagon className="size-8 text-destructive" />
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-3">Registration Rejected</h2>
+          <p className="text-muted-foreground mb-8 leading-relaxed">
+            The administrator did not approve your registration, so this account cannot use CareBeacon.
+            Please contact the administrator if you think this is a mistake.
+          </p>
+          <button
+            onClick={() => signOut(auth)}
             className="w-full py-2 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl transition"
           >
             <LogOut className="size-4" />
@@ -212,7 +236,9 @@ export default function App() {
                 <Route path="/admin/*" element={<Navigate to="/" replace />} />
                 {/* Show dashboard or pending screen for caregiver */}
                 <Route path="*" element={
-                  accessStatus === 'suspended' ? (
+                  accessStatus === 'rejected' ? (
+                    <RejectedScreen />
+                  ) : accessStatus === 'suspended' ? (
                     <SuspendedScreen />
                   ) : accessStatus === 'pending' ? (
                     <PendingApprovalScreen />

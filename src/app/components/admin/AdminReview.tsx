@@ -56,7 +56,7 @@ export function AdminReview() {
       title: approving ? 'Approve registration?' : 'Reject registration?',
       message: approving
         ? <>{request.caregiverName} will get access to the dashboard for <strong className="text-foreground">{request.monitoredPersonName}</strong>.</>
-        : <>The family of {request.caregiverName} will be suspended and they will not be able to sign in.</>,
+        : <>The registration of {request.caregiverName} will be rejected. The device <span className="font-mono text-foreground">{request.deviceSerialNumber}</span> is released so it can be registered again, and they will not be able to use the dashboard.</>,
       confirmLabel: approving ? 'Approve' : 'Reject',
       tone: approving ? 'primary' : 'danger',
       icon: null,
@@ -77,9 +77,16 @@ export function AdminReview() {
         updates[`users/${request.caregiverUid}/accessStatus`] = 'active';
         updates[`families/${request.familyId}/caregivers/${request.caregiverUid}/approvedAt`] = new Date().toISOString();
       } else if (action === 'rejected') {
-        // 2. Suspend the family and user so they can't log in
-        updates[`families/${request.familyId}/status`] = 'suspended';
-        updates[`users/${request.caregiverUid}/accessStatus`] = 'suspended';
+        // 2. The caregiver is refused
+        updates[`users/${request.caregiverUid}/accessStatus`] = 'rejected';
+
+        // Registrations made by the old "joining an existing family" sign-up point at somebody else's family: never touch that
+        if (request.monitoredPersonName !== '(Joining existing family)') {
+          // The registration is undone: the family disappears from Families and the device MAC is free again
+          updates[`families/${request.familyId}`] = null;
+          updates[`devices/${request.deviceSerialNumber}/familyId`] = null;
+          updates[`users/${request.caregiverUid}/familyId`] = null;
+        }
       }
 
       // Perform atomic update
