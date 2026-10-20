@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Phone, CheckCircle, AlertCircle, Eye, EyeOff, HelpCircle, Trash2, Ticket, Send, X, AlertTriangle } from 'lucide-react';
+import { User, Mail, Lock, Phone, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { auth } from '../../lib/firebase';
-import { db, ref, update, push, set, onValue } from '../../lib/db';
+import { db, ref, update, onValue } from '../../lib/db';
 import {
   updatePassword,
   verifyBeforeUpdateEmail,
@@ -59,20 +59,6 @@ export function UserSettings() {
   const [inlinePasswordError, setInlinePasswordError] = useState('');
   const [inlineConfirmError, setInlineConfirmError] = useState('');
 
-  // Support Ticket
-  const [showSupportModal, setShowSupportModal] = useState(false);
-  const [ticketSubject, setTicketSubject] = useState('');
-  const [ticketDescription, setTicketDescription] = useState('');
-  const [ticketLoading, setTicketLoading] = useState(false);
-  const [ticketMsg, setTicketMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Account Deletion Request
-  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
-  const [deleteReason, setDeleteReason] = useState('');
-  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
-  const [deleteAccountMsg, setDeleteAccountMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const [familyId, setFamilyId] = useState<string | null>(null);
   const [currentPhone, setCurrentPhone] = useState<string>('');
   const [confirm, confirmDialog] = useConfirm();
 
@@ -83,82 +69,12 @@ export function UserSettings() {
       const userRef = ref(db, `users/${user.uid}`);
       const unsub = onValue(userRef, (snapshot) => {
         if (snapshot.exists()) {
-          setFamilyId(snapshot.val().familyId || null);
           setCurrentPhone(snapshot.val().phone || '');
         }
       });
       return () => unsub();
     }
   }, [user]);
-
-  const handleSubmitTicket = async (e: React.FormEvent, isDeletionRequest = false) => {
-    e.preventDefault();
-    if (!user) return;
-    
-    const subject = isDeletionRequest ? 'ACCOUNT DELETION REQUEST' : ticketSubject.trim();
-    const description = isDeletionRequest ? deleteReason.trim() : ticketDescription.trim();
-
-    if (!subject || (!description && !isDeletionRequest)) {
-      if (isDeletionRequest) {
-        setDeleteAccountMsg({ type: 'error', text: 'Please provide a reason.' });
-      } else {
-        setTicketMsg({ type: 'error', text: 'Please fill in all fields.' });
-      }
-      return;
-    }
-
-    const ok = await confirm(
-      isDeletionRequest
-        ? {
-            title: 'Send deletion request?',
-            message: 'The administrator will be asked to remove your caregiver account from this family. You will lose access to the dashboard once it is approved.',
-            confirmLabel: 'Send Request',
-            tone: 'danger',
-            icon: null,
-          }
-        : {
-            title: 'Submit this ticket?',
-            message: <>Subject: <strong className="text-foreground">{subject}</strong><br />The administrator will see your message and email address.</>,
-            confirmLabel: 'Submit Ticket',
-            icon: null,
-          }
-    );
-    if (!ok) return;
-
-    if (isDeletionRequest) setDeleteAccountLoading(true);
-    else setTicketLoading(true);
-
-    try {
-      const ticketRef = push(ref(db, 'admin/tickets'));
-      const ticketDescription = isDeletionRequest
-        ? `Reason: ${description || 'No reason provided'}\n\n⚠️ CAREGIVER REMOVAL REQUEST (not full family deletion)\nRemove ONLY this caregiver from the family.\nCaregiver: ${user.email} (UID: ${user.uid})\nFamily ID: ${familyId || 'Unknown'}\n\nUse "Manage Caregivers" in Admin Families to remove this individual caregiver.`
-        : `${description}\n\nSubmitted by User: ${user.email} (UID: ${user.uid})`;
-      await set(ticketRef, {
-        title: subject,
-        description: ticketDescription,
-        familyId: familyId || user.uid,
-        status: 'open',
-        createdAt: new Date().toISOString(),
-      });
-      
-      if (isDeletionRequest) {
-        setDeleteAccountMsg({ type: 'success', text: 'Your account deletion request has been submitted to the admins.' });
-        setDeleteReason('');
-        setTimeout(() => { setShowDeleteAccountModal(false); setDeleteAccountMsg(null); }, 2000);
-      } else {
-        setTicketMsg({ type: 'success', text: 'Your support ticket has been submitted.' });
-        setTicketSubject('');
-        setTicketDescription('');
-        setTimeout(() => { setShowSupportModal(false); setTicketMsg(null); }, 2000);
-      }
-    } catch (err: any) {
-      if (isDeletionRequest) setDeleteAccountMsg({ type: 'error', text: 'Failed to submit request.' });
-      else setTicketMsg({ type: 'error', text: 'Failed to submit ticket.' });
-    } finally {
-      if (isDeletionRequest) setDeleteAccountLoading(false);
-      else setTicketLoading(false);
-    }
-  };
 
   const handleUpdateEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -536,48 +452,6 @@ export function UserSettings() {
         </div>
       </form>
 
-      {/* Support & Account Section */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <HelpCircle className="size-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">Support & Account</h3>
-            <p className="text-xs text-muted-foreground">Get help or manage your account status</p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border border-border rounded-xl bg-muted/30">
-            <div>
-              <p className="font-medium text-sm text-foreground">Contact Support</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Submit a ticket to our administration team.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowSupportModal(true)}
-              className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-            >
-              Submit Ticket
-            </button>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border border-destructive/20 rounded-xl bg-destructive/5">
-            <div>
-              <p className="font-medium text-sm text-destructive">Delete Account</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Permanently remove your account and data.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowDeleteAccountModal(true)}
-              className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-            >
-              Request Deletion
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Password Confirmation Modal */}
       {showPasswordConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -601,119 +475,6 @@ export function UserSettings() {
               >
                 Confirm
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Support Ticket Modal */}
-      {showSupportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between p-5 border-b border-border bg-muted/30">
-              <h3 className="font-semibold text-foreground">Submit a Ticket</h3>
-              <button onClick={() => setShowSupportModal(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="size-5" />
-              </button>
-            </div>
-            <form onSubmit={(e) => handleSubmitTicket(e, false)} className="p-6 overflow-y-auto">
-              <Feedback msg={ticketMsg} />
-              <div className="space-y-4 mt-2">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Subject</label>
-                  <input
-                    type="text"
-                    value={ticketSubject}
-                    onChange={(e) => setTicketSubject(e.target.value)}
-                    placeholder="Briefly describe the issue"
-                    className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition text-sm"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Description</label>
-                  <textarea
-                    value={ticketDescription}
-                    onChange={(e) => setTicketDescription(e.target.value)}
-                    placeholder="Provide details about your request or issue..."
-                    rows={4}
-                    className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition text-sm resize-none"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowSupportModal(false)}
-                  className="flex-1 py-2.5 px-4 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={ticketLoading}
-                  className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  {ticketLoading ? (
-                     <span className="size-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  ) : (
-                    <><Send className="size-4" /> Submit</>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Account Deletion Modal */}
-      {showDeleteAccountModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex flex-col items-center text-center p-6 pb-8">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Request Account Removal</h3>
-              <p className="text-sm text-muted-foreground mb-1">
-                This will submit a request to remove <strong className="text-foreground">your caregiver account</strong> from the family.
-              </p>
-              <p className="text-xs text-muted-foreground mb-4">
-                Other caregivers assigned to the same monitored person will not be affected.
-              </p>
-              
-              <Feedback msg={deleteAccountMsg} />
-              
-              <form onSubmit={(e) => handleSubmitTicket(e, true)} className="w-full text-left mt-2">
-                <label className="block text-sm font-medium text-foreground mb-1.5">Reason for leaving (optional)</label>
-                <textarea
-                  value={deleteReason}
-                  onChange={(e) => setDeleteReason(e.target.value)}
-                  placeholder="Help us improve by telling us why..."
-                  rows={3}
-                  className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-destructive focus:ring-1 focus:ring-destructive transition text-sm resize-none mb-6"
-                />
-                
-                <div className="flex gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => { setShowDeleteAccountModal(false); setDeleteReason(''); setDeleteAccountMsg(null); }}
-                    disabled={deleteAccountLoading}
-                    className="flex-1 py-2.5 px-4 text-sm font-medium text-foreground bg-muted hover:bg-muted/80 rounded-xl transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={deleteAccountLoading}
-                    className="flex-1 py-2.5 px-4 text-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center"
-                  >
-                    {deleteAccountLoading ? (
-                      <span className="size-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
-                    ) : (
-                      "Submit Request"
-                    )}
-                  </button>
-                </div>
-              </form>
             </div>
           </div>
         </div>
