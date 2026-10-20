@@ -4,7 +4,6 @@ import { cn } from "../ui/utils";
 import { Menu, X, LogOut, ArrowLeft, Settings } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
-import { useAdminBatteryDrain } from "../../../lib/battery";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", section: "Overview" },
@@ -22,9 +21,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  // the demo battery of every registered device goes down while the admin site is open
-  useAdminBatteryDrain();
 
   const isRootAdmin = location.pathname === "/admin";
 

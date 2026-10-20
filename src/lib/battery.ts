@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
-import { db, ref, onValue, runTransaction, set } from './db';
+import { useEffect } from 'react';
+import { db, ref, runTransaction, set } from './db';
 
 /**
  * Demo battery: the real battery readings are not available yet, so the percentage
  * shown on the website goes down while the website is OPEN:
  *   - wearable: 5 % for every 20 minutes
  *   - hub:      2 % for every 30 minutes
- * While the website is closed nothing goes down.
+ * While the website is closed nothing goes down. Only the caregiver's own page drains
+ * their device; the admin pages just show the numbers and never drain anything.
  *
  * The values live in Firebase (devices/{id}/batteries = { wearable, hub, tickAt, accWearable, accHub })
  * so the admin side and the user side always show the same numbers.
@@ -96,24 +97,4 @@ export function useBatteryDrain(deviceIds: string[]) {
     const timer = setInterval(tick, TICK_MS);
     return () => clearInterval(timer);
   }, [key]);
-}
-
-/** Admin side: every device that belongs to a registered family. */
-export function useAdminBatteryDrain() {
-  const [ids, setIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const unsub = onValue(ref(db, 'families'), (snap) => {
-      const v = snap.val() || {};
-      const set = new Set<string>();
-      Object.values(v).forEach((f: any) => {
-        const id = f?.deviceId || f?.deviceSerialNumber;
-        if (id) set.add(String(id));
-      });
-      setIds([...set]);
-    }, () => {});
-    return () => unsub();
-  }, []);
-
-  useBatteryDrain(ids);
 }
