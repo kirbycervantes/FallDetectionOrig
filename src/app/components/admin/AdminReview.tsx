@@ -76,6 +76,16 @@ export function AdminReview() {
         // 2. Let the caregiver in (the caregiver record was already made at sign-up, so it is not overwritten)
         updates[`users/${request.caregiverUid}/accessStatus`] = 'active';
         updates[`families/${request.familyId}/caregivers/${request.caregiverUid}/approvedAt`] = new Date().toISOString();
+        // A newly approved device starts at 100 % and the demo battery timer starts now (nothing drops right away)
+        if (request.monitoredPersonName !== '(Joining existing family)' && request.deviceSerialNumber) {
+          updates[`devices/${request.deviceSerialNumber}/batteries`] = {
+            wearable: 100,
+            hub: 100,
+            tickAt: Date.now(),
+            accWearable: 0,
+            accHub: 0,
+          };
+        }
       } else if (action === 'rejected') {
         // 2. The caregiver is refused
         updates[`users/${request.caregiverUid}/accessStatus`] = 'rejected';

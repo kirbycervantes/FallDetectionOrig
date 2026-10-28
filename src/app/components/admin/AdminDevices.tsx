@@ -3,12 +3,11 @@ import { AdminLayout } from "./AdminLayout";
 import { StatusBadge } from "./StatusBadge";
 import { BatteryBadge } from "../BatteryBadge";
 import { batteryClasses } from "../../../lib/battery";
-import { db, ref, onValue, set } from "../../../lib/db";
+import { db, ref, onValue } from "../../../lib/db";
 import { SkeletonTable } from "../ui/skeleton";
 import { familyDeviceId, personName, batteryLevels, deviceState, flattenEvents } from "./adminData";
 import { validDate } from "../../../lib/time";
-import { Search, Filter, CalendarDays, Battery, X, Activity, Cpu, Radio, Check, AlertCircle } from "lucide-react";
-import { useConfirm } from "../ui/confirm-dialog";
+import { Search, Filter, CalendarDays, Battery, X, Activity, Cpu, Radio, Plug } from "lucide-react";
 import { useNow } from "../../../lib/deviceStatus";
 
 interface Device {
@@ -19,6 +18,8 @@ interface Device {
   lastUpdate: Date | null;
   familyId: string | null;
   patientName: string | null;
+  /** the real MAC address the hub reported when it registered itself (admin/inventory/<id>/mac) */
+  mac: string | null;
 }
 
 export function AdminDevices() {
@@ -28,7 +29,6 @@ export function AdminDevices() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDays, setFilterDays] = useState("all");
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [confirm, confirmDialog] = useConfirm();
   const now = useNow(5000);
   const nowRef = useRef(now);
   nowRef.current = now;
@@ -36,17 +36,11 @@ export function AdminDevices() {
   // re-evaluate online/offline every few seconds WITHOUT re-subscribing to Firebase (re-subscribing made the page flicker)
   useEffect(() => { recomputeRef.current?.(); }, [now]);
 
-  // Provision modal state
-  const [showProvisionModal, setShowProvisionModal] = useState(false);
-  const [provisionMac, setProvisionMac] = useState("");
-  const [provisionLoading, setProvisionLoading] = useState(false);
-  const [provisionError, setProvisionError] = useState("");
-  const [provisionSuccess, setProvisionSuccess] = useState(false);
-
   useEffect(() => {
     let currentDevices: any = {};
     let currentFamilies: any = {};
     let currentEvents: any = {};
+    let currentInventory: any = {};
     const loaded = { devices: false, families: false };
 
     const updateDevicesList = () => {
@@ -59,6 +53,8 @@ export function AdminDevices() {
 
       // Every device in /devices plus any device linked to a family but not yet in /devices
       const ids = new Set<string>(Object.keys(currentDevices));
+      // devices that registered themselves (the hub writes admin/inventory/<id> when it connects)
+      Object.keys(currentInventory).forEach(k => ids.add(k));
       Object.values(currentFamilies).forEach((f: any) => {
         const id = familyDeviceId(f);
         if (id) ids.add(id);
@@ -87,6 +83,7 @@ export function AdminDevices() {
           lastUpdate: latest ? new Date(latest) : null,
           familyId,
           patientName: name === "Unknown" ? null : name,
+          mac: typeof currentInventory[deviceId]?.mac === 'string' ? currentInventory[deviceId].mac : null,
         });
       });
 
@@ -109,11 +106,15 @@ export function AdminDevices() {
     const unsubEvents = onValue(ref(db, 'events'), (snapshot) => {
       currentEvents = snapshot.val() || {}; updateDevicesList();
     });
+    const unsubInventory = onValue(ref(db, 'admin/inventory'), (snapshot) => {
+      currentInventory = snapshot.val() || {}; updateDevicesList();
+    }, () => {});
 
     return () => {
       unsubDevices();
       unsubFamilies();
       unsubEvents();
+      unsubInventory();
     };
   }, []);
 
@@ -131,85 +132,6 @@ export function AdminDevices() {
     return matchesSearch && matchesStatus && matchesDays;
   });
 
-  // Keeps the field in the CB-XXXX-XXXX shape: only digits are accepted
-  const formatMac = (raw: string) => {
-    const digits = raw.replace(/^cb/i, "").replace(/\D/g, "").slice(0, 8);
-    if (!digits) return "";
-    return digits.length > 4 ? `CB-${digits.slice(0, 4)}-${digits.slice(4)}` : `CB-${digits}`;
-  };
-  const MAC_PATTERN = /^CB-\d{4}-\d{4}$/;
-
-  const handleProvisionDevice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setProvisionError('');
-    setProvisionSuccess(false);
-
-    const trimmedMac = provisionMac.trim();
-    if (!trimmedMac) {
-      setProvisionError('MAC address is required.');
-      return;
-    }
-    if (!MAC_PATTERN.test(trimmedMac)) {
-      setProvisionError('MAC address must be in the format CB-XXXX-XXXX (numbers only).');
-      return;
-    }
-
-    // Check if the serial already exists in the loaded devices list
-    const alreadyExists = devices.some(d => d.id === trimmedMac);
-    if (alreadyExists) {
-      setProvisionError('A device with this MAC address already exists.');
-      return;
-    }
-
-    const ok = await confirm({
-      title: 'Provision this device?',
-      message: <>MAC address <span className="font-mono text-foreground">{trimmedMac}</span> will be added to the inventory.</>,
-      confirmLabel: 'Provision',
-      icon: null,
-    });
-    if (!ok) return;
-
-    setProvisionLoading(true);
-    try {
-      const provisionedAt = new Date().toISOString();
-
-      // Write to admin/inventory so signup can validate
-      const inventoryRef = ref(db, `admin/inventory/${trimmedMac}`);
-      await set(inventoryRef, {
-        provisionedAt,
-      });
-
-      // Create the device record
-      const deviceRef = ref(db, `devices/${trimmedMac}`);
-      await set(deviceRef, {
-        status: 'offline',
-        battery: 0,
-        location: { lat: 0, lng: 0 },
-      });
-
-      setProvisionSuccess(true);
-      setProvisionMac('');
-
-      // Auto-close after a short delay
-      setTimeout(() => {
-        setShowProvisionModal(false);
-        setProvisionSuccess(false);
-      }, 1500);
-    } catch (err: any) {
-      console.error('Provision error:', err);
-      setProvisionError(err.message || 'Failed to provision device. Please try again.');
-    } finally {
-      setProvisionLoading(false);
-    }
-  };
-
-  const resetProvisionModal = () => {
-    setShowProvisionModal(false);
-    setProvisionMac('');
-    setProvisionError('');
-    setProvisionSuccess(false);
-  };
-
   return (
     <AdminLayout>
       <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -217,16 +139,9 @@ export function AdminDevices() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Devices</h1>
-            <p className="text-sm text-muted-foreground mt-1">Fleet-wide monitoring of all provisioned devices</p>
+            <p className="text-sm text-muted-foreground mt-1">Fleet-wide monitoring of all registered devices</p>
           </div>
           
-          <button
-            onClick={() => setShowProvisionModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors shadow-sm"
-          >
-            Provision Device
-          </button>
-
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -268,6 +183,42 @@ export function AdminDevices() {
           </div>
         </div>
 
+        {/* Available devices: hubs that registered themselves and are not linked to a family yet */}
+        {!loading && (() => {
+          const available = devices.filter(d => !d.familyId);
+          return (
+            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
+                  <Plug className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-foreground">Available devices</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Devices register themselves when the hub is switched on and connected to Wi-Fi. Give the MAC address of an available device to the caregiver for sign-up.
+                  </p>
+                  {available.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic mt-3">No available devices right now.</p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {available.map(d => (
+                        <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border px-3 py-2">
+                          <span className="font-mono font-bold text-xs text-foreground">{d.id}</span>
+                          {d.mac && <span className="font-mono text-[11px] text-muted-foreground">{d.mac}</span>}
+                          <StatusBadge status={d.status} />
+                          <span className="text-[11px] text-muted-foreground sm:ml-auto">
+                            {d.lastUpdate ? `Last seen ${d.lastUpdate.toLocaleString()}` : "Not seen yet"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Devices Table */}
         {loading ? (
           <SkeletonTable rows={5} />
@@ -289,7 +240,7 @@ export function AdminDevices() {
                 {filteredDevices.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                      {search ? "No devices matched your search" : "No devices provisioned"}
+                      {search ? "No devices matched your search" : "No devices yet. A device appears here when its hub is switched on and connected to Wi-Fi."}
                     </td>
                   </tr>
                 ) : (
@@ -431,94 +382,6 @@ export function AdminDevices() {
         </div>
       )}
 
-      {/* Provision Device Modal */}
-      {showProvisionModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Provision Device</h3>
-                  <p className="text-xs text-muted-foreground">Add a new CareBeacon to the inventory</p>
-                </div>
-              </div>
-              <button
-                onClick={resetProvisionModal}
-                className="p-2 hover:bg-muted text-muted-foreground rounded-xl transition-colors"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleProvisionDevice} className="p-6 overflow-y-auto space-y-5">
-              {provisionError && (
-                <div className="flex items-start gap-2.5 p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm">
-                  <AlertCircle className="size-4 mt-0.5 flex-shrink-0" />
-                  {provisionError}
-                </div>
-              )}
-
-              {provisionSuccess && (
-                <div className="flex items-center gap-2.5 p-3 bg-success/10 border border-success/20 rounded-xl text-success text-sm">
-                  <Check className="size-4 flex-shrink-0" />
-                  Device provisioned successfully!
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">MAC Address <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={provisionMac}
-                  onChange={(e) => setProvisionMac(formatMac(e.target.value))}
-                  maxLength={12}
-                  className="w-full px-4 py-2.5 bg-input-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-sm font-mono tracking-wider"
-                  placeholder="CB-XXXX-XXXX"
-                  required
-                  disabled={provisionLoading || provisionSuccess}
-                />
-                <p className="text-[10px] text-muted-foreground">The unique MAC address printed on the CareBeacon device.</p>
-              </div>
-            </form>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-border bg-muted/10 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={resetProvisionModal}
-                className="px-4 py-2.5 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-sm font-medium transition-colors"
-                disabled={provisionLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                onClick={handleProvisionDevice}
-                disabled={provisionLoading || provisionSuccess}
-                className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors disabled:opacity-70 disabled:pointer-events-none flex items-center gap-2"
-              >
-                {provisionLoading ? (
-                  <>
-                    <span className="size-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                    Provisioning...
-                  </>
-                ) : provisionSuccess ? (
-                  <>
-                    <Check className="size-4" />
-                    Done
-                  </>
-                ) : (
-                  <>Provision Device</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {confirmDialog}
     </AdminLayout>
   );
 }

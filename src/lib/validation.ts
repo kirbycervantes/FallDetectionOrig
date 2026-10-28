@@ -9,7 +9,7 @@ export function cleanName(value: string): string {
   return value.replace(/[^A-Za-z\u00D1\u00F1 ]/g, '').replace(/ {2,}/g, ' ').slice(0, 60);
 }
 
-/** A device MAC address: CB-1234-5678 (what the admin provisions). Numbers only. */
+/** A device MAC address: CB-1234-5678 (the ID the hub registers for itself). Numbers only. */
 export const MAC_PATTERN = /^CB-\d{4}-\d{4}$/;
 
 export const MAC_ERROR = 'The MAC address must look like CB-1234-5678 (numbers only).';

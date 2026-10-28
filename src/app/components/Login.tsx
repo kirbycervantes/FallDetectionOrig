@@ -288,7 +288,7 @@ export function Login({ onSignUpComplete }: LoginProps) {
 
       if (!inventorySnap.exists()) {
         setError(
-          'Unrecognized MAC address. This device has not been provisioned by the administrator. Please verify the MAC address on your CareBeacon device.'
+          'Unrecognized MAC address. This device has not registered yet. Switch the hub on, connect it to Wi-Fi, and check the MAC address.'
         );
 
         console.error(

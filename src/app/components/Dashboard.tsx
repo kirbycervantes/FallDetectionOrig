@@ -402,7 +402,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
       const invSnap = await get(invRef);
       
       if (!invSnap.exists()) {
-        throw new Error('Invalid Device MAC Address or device not provisioned.');
+        throw new Error('Invalid Device MAC Address or the device has not registered yet.');
       }
       
       // 3. Create new family for this provisioned device
@@ -631,7 +631,7 @@ export function Dashboard({ user, impersonatedFamilyId, onLogout }: DashboardPro
             </div>
             <div className="min-w-0 leading-tight">
               <h1 className="text-base md:text-lg font-semibold tracking-tight text-foreground">CareBeacon</h1>
-              <p className="text-xs text-muted-foreground truncate">{patientName || deviceData.user?.name || 'Patient'}</p>
+              <p className="text-xs text-muted-foreground truncate">{(readOnly ? patientName : (user?.displayName || user?.email?.split('@')[0])) || patientName || deviceData.user?.name || 'Caregiver'}</p>
             </div>
           </div>
 

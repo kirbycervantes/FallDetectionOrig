@@ -282,7 +282,7 @@ function IncidentView({ inc }: { inc: Incident }) {
           <dd className="text-foreground">{fmtFull(inc.startedAt)}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Alert delivery</dt>
+          <dt className="text-xs text-muted-foreground">SMS</dt>
           <dd className="mt-0.5"><DeliveryBadge state={inc.delivery} /></dd>
         </div>
         <div className="sm:col-span-2">
@@ -429,7 +429,7 @@ export function AdminIncidents() {
       ]);
     downloadCsv(
       `carebeacon-incidents-${csvDate(new Date())}.csv`,
-      ["Date", "Time", "Person monitored", "Device MAC", "Type", "Events", "Alert delivery", "Response", "Responded by", "Responded at"],
+      ["Date", "Time", "Person monitored", "Device MAC", "Type", "Events", "SMS", "Response", "Responded by", "Responded at"],
       rows
     );
   };
@@ -476,9 +476,9 @@ export function AdminIncidents() {
             </div>
             <div className="relative">
               <Filter className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <label htmlFor="inc-delivery" className="sr-only">Alert delivery</label>
+              <label htmlFor="inc-delivery" className="sr-only">SMS status</label>
               <select id="inc-delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as any)} className={selectCls}>
-                <option value="all">Any alert delivery</option>
+                <option value="all">Any SMS status</option>
                 <option value="Delivered">Delivered</option>
                 <option value="Partly failed">Partly failed</option>
                 <option value="Failed">Failed</option>
@@ -530,7 +530,7 @@ export function AdminIncidents() {
                     <th scope="col" className="px-4 py-3 font-medium">Person / Device</th>
                     <th scope="col" className="px-4 py-3 font-medium">Type</th>
                     <th scope="col" className="px-4 py-3 font-medium">Location</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Alert delivery</th>
+                    <th scope="col" className="px-4 py-3 font-medium">SMS</th>
                     <th scope="col" className="px-4 py-3 font-medium">Response</th>
                     <th scope="col" className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>

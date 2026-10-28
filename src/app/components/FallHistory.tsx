@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw, Download, Navigation } from 'lucide-react';
+import { MapPin, AlertTriangle, CheckCircle, Hand, XCircle, CloudOff, RefreshCw, Download, Navigation, ChevronDown } from 'lucide-react';
 import { resolveEventTime, validDate } from '../../lib/time';
 import { db, ref, onValue } from '../../lib/db';
 import { SkeletonList } from './ui/skeleton';
@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { eventKind, isCancelled, isStoppedQuietly, kindLabel, type EventKind } from '../../lib/events';
 import { parseResponse, saveResponse, type EventResponse, type ResponseStatus } from '../../lib/responses';
 import { downloadCsv, csvDate, csvTime } from '../../lib/exportCsv';
-import { channelKind, normalizeStatus } from './admin/deliveryModel';
+import { channelKind, normalizeStatus, buildEventDelivery, type RecipientDelivery } from './admin/deliveryModel';
 
 interface FallEvent {
   id: string;
@@ -22,6 +22,8 @@ interface FallEvent {
   /** contacts the hub could not text / contacts it tried to text */
   smsFailed: number;
   smsTotal: number;
+  /** who the hub texted and how each SMS went (for the Details dropdown) */
+  recipients: RecipientDelivery[];
 }
 
 interface FallHistoryProps {
@@ -72,6 +74,24 @@ function formatEventLocation(location: unknown): string {
   return 'Location unavailable';
 }
 
+// Google Maps link for a location with real coordinates
+function eventMapUrl(location: unknown): string | null {
+  if (location && typeof location === 'object') {
+    const c = location as { lat?: unknown; lng?: unknown };
+    if (typeof c.lat === 'number' && typeof c.lng === 'number' && !(c.lat === 0 && c.lng === 0)) {
+      return `https://www.google.com/maps?q=${c.lat},${c.lng}`;
+    }
+  }
+  return null;
+}
+
+const SMS_LABEL: Record<string, { text: string; cls: string }> = {
+  success: { text: 'Delivered', cls: 'text-success' },
+  pending: { text: 'Sending', cls: 'text-muted-foreground' },
+  failure: { text: 'Failed', cls: 'text-destructive' },
+  unknown: { text: 'No result reported', cls: 'text-muted-foreground' },
+};
+
 // How many contacts the hub reported a failed SMS for (events/<device>/<event>/delivery/contactN/sms)
 function smsCounts(raw: any, cancelled: boolean): { failed: number; total: number } {
   if (cancelled || !raw?.delivery || typeof raw.delivery !== 'object') return { failed: 0, total: 0 };
@@ -99,6 +119,13 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
   const [contactNames, setContactNames] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  // events whose Details dropdown is open
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const toggleOpen = (id: string) => setOpenIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   // Clears the filters and goes back to the first page (events themselves are already live)
   const handleRefresh = () => {
@@ -122,6 +149,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
             const raw = data[key];
             const cancelled = isCancelled(raw);
             const sms = smsCounts(raw, cancelled);
+            const built = cancelled ? null : buildEventDelivery(raw, null);
             return {
               id: key,
               timestamp: resolveEventTime(key, raw.timestamp),
@@ -134,6 +162,7 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
               response: parseResponse(raw),
               smsFailed: sms.failed,
               smsTotal: sms.total,
+              recipients: built && built.hasReceipts ? built.recipients : [],
             };
           })
           .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -513,6 +542,104 @@ export function FallHistory({ deviceId, readOnly = false, responder, familyId }:
                         )}
                       </div>
                     )}
+
+                    {/* Details dropdown: what happened, step by step */}
+                    <div className="mt-3 border-t border-border pt-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleOpen(event.id)}
+                        aria-expanded={openIds.has(event.id)}
+                        aria-controls={`event-details-${event.id}`}
+                        className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80"
+                      >
+                        <ChevronDown className={`size-4 transition-transform ${openIds.has(event.id) ? 'rotate-180' : ''}`} />
+                        {openIds.has(event.id) ? 'Hide details' : 'Show details'}
+                      </button>
+
+                      {openIds.has(event.id) && (
+                        <ol
+                          id={`event-details-${event.id}`}
+                          className="relative mt-3 space-y-3 border-l border-border pl-4 text-sm"
+                          aria-label="What happened, in order"
+                        >
+                          <li className="relative">
+                            <span className={`absolute -left-[21px] top-1.5 size-2.5 rounded-full ring-4 ring-background ${event.kind === 'sos' ? 'bg-warning' : 'bg-destructive'}`} aria-hidden="true" />
+                            <p className="font-medium text-foreground">
+                              {event.kind === 'sos' ? 'Manual SOS pressed' : 'Fall detected by the wearable'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{event.timestamp.toLocaleString()}</p>
+                          </li>
+
+                          {event.cancelled ? (
+                            <li className="relative">
+                              <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-muted-foreground/50 ring-4 ring-background" aria-hidden="true" />
+                              <p className="font-medium text-foreground">
+                                {event.quiet ? 'Alarm stopped quietly, no SMS sent' : 'Alert cancelled'}
+                              </p>
+                              {event.cancelledAt && (
+                                <p className="text-xs text-muted-foreground">{event.cancelledAt.toLocaleString()}</p>
+                              )}
+                            </li>
+                          ) : (
+                            <>
+                              <li className="relative">
+                                <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-primary ring-4 ring-background" aria-hidden="true" />
+                                <p className="font-medium text-foreground">Alert reached the hub</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {event.offline ? 'Happened offline, uploaded to the website later' : 'Saved to the website'}
+                                </p>
+                              </li>
+                              <li className="relative">
+                                <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-primary ring-4 ring-background" aria-hidden="true" />
+                                <p className="font-medium text-foreground">Location</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatEventLocation(event.location)}
+                                  {eventMapUrl(event.location) && (
+                                    <>
+                                      {' · '}
+                                      <a href={eventMapUrl(event.location)!} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                                        Open in Google Maps
+                                      </a>
+                                    </>
+                                  )}
+                                </p>
+                              </li>
+                              <li className="relative">
+                                <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-primary ring-4 ring-background" aria-hidden="true" />
+                                <p className="font-medium text-foreground">SMS to the emergency contacts</p>
+                                {event.recipients.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground">No SMS result was reported for this alert</p>
+                                ) : (
+                                  <ul className="mt-1 space-y-0.5">
+                                    {event.recipients.map((r, i) => {
+                                      const label = SMS_LABEL[channelKind(r.sms.status)] ?? SMS_LABEL.unknown;
+                                      return (
+                                        <li key={i} className="text-xs text-muted-foreground">
+                                          {r.name} <span className="text-muted-foreground/70">{r.phone}</span>
+                                          {' - '}
+                                          <span className={`font-medium ${label.cls}`}>{label.text}</span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                )}
+                              </li>
+                              {event.response && (
+                                <li className="relative">
+                                  <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-success ring-4 ring-background" aria-hidden="true" />
+                                  <p className="font-medium text-foreground">
+                                    {event.response.status === 'handled' ? 'Marked as handled' : 'Someone is on the way'} - {event.response.by}
+                                  </p>
+                                  {event.response.at && (
+                                    <p className="text-xs text-muted-foreground">{event.response.at.toLocaleString()}</p>
+                                  )}
+                                </li>
+                              )}
+                            </>
+                          )}
+                        </ol>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
