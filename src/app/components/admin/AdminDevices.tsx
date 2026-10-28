@@ -120,6 +120,7 @@ export function AdminDevices() {
 
   const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
   const filteredDevices = devices.filter(d => {
+    if (!d.familyId) return false;   // unassigned devices are listed under Available devices
     const q = norm(search);
     const matchesSearch = !q || norm(d.id).includes(q) || (!!d.patientName && norm(d.patientName).includes(q));
     const matchesStatus = filterStatus === "all" || d.status === filterStatus;
@@ -139,7 +140,7 @@ export function AdminDevices() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Devices</h1>
-            <p className="text-sm text-muted-foreground mt-1">Fleet-wide monitoring of all registered devices</p>
+            <p className="text-sm text-muted-foreground mt-1">Available devices to give out, and the devices already registered to families</p>
           </div>
           
           <div className="flex items-center gap-3">
@@ -183,41 +184,64 @@ export function AdminDevices() {
           </div>
         </div>
 
-        {/* Available devices: hubs that registered themselves and are not linked to a family yet */}
+        {/* Available devices: registered by the device itself, not linked to a family yet */}
         {!loading && (() => {
           const available = devices.filter(d => !d.familyId);
           return (
-            <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-              <div className="flex items-start gap-3">
+            <section className="bg-card rounded-xl border border-border shadow-sm overflow-hidden" aria-labelledby="available-devices-title">
+              <div className="flex items-start gap-3 p-5 border-b border-border">
                 <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
                   <Plug className="size-4" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-semibold text-foreground">Available devices</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Devices register themselves when the hub is switched on and connected to Wi-Fi. Give the MAC address of an available device to the caregiver for sign-up.
+                <div className="min-w-0">
+                  <h2 id="available-devices-title" className="text-base font-semibold text-foreground">
+                    Available devices <span className="text-muted-foreground font-normal">({available.length})</span>
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Not linked to a family yet. Give one of these MAC addresses to a new caregiver to use at sign-up.
                   </p>
-                  {available.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic mt-3">No available devices right now.</p>
-                  ) : (
-                    <ul className="mt-3 space-y-2">
-                      {available.map(d => (
-                        <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border px-3 py-2">
-                          <span className="font-mono font-bold text-xs text-foreground">{d.id}</span>
-                          {d.mac && <span className="font-mono text-[11px] text-muted-foreground">{d.mac}</span>}
-                          <StatusBadge status={d.status} />
-                          <span className="text-[11px] text-muted-foreground sm:ml-auto">
-                            {d.lastUpdate ? `Last seen ${d.lastUpdate.toLocaleString()}` : "Not seen yet"}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
               </div>
-            </div>
+              {available.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-muted-foreground">
+                  No available devices. A device shows up here after its hub is switched on and connected to Wi-Fi.
+                </p>
+              ) : (
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-muted-foreground bg-muted/30">
+                      <tr>
+                        <th className="font-medium px-5 py-2.5">MAC address to give</th>
+                        <th className="font-medium px-5 py-2.5">Wearable MAC</th>
+                        <th className="font-medium px-5 py-2.5">Status</th>
+                        <th className="font-medium px-5 py-2.5">Last seen</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {available.map(d => (
+                        <tr key={d.id}>
+                          <td className="px-5 py-3 font-mono font-bold text-sm text-foreground">{d.id}</td>
+                          <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{d.mac ?? "—"}</td>
+                          <td className="px-5 py-3"><StatusBadge status={d.status} /></td>
+                          <td className="px-5 py-3 text-xs text-muted-foreground">
+                            {d.lastUpdate ? d.lastUpdate.toLocaleString() : "Not seen yet"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           );
         })()}
+
+        {/* Devices that belong to a family */}
+        {!loading && (
+          <h2 className="text-base font-semibold text-foreground pt-2">
+            Registered devices <span className="text-muted-foreground font-normal">({devices.filter(d => d.familyId).length})</span>
+          </h2>
+        )}
 
         {/* Devices Table */}
         {loading ? (
@@ -240,7 +264,7 @@ export function AdminDevices() {
                 {filteredDevices.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                      {search ? "No devices matched your search" : "No devices yet. A device appears here when its hub is switched on and connected to Wi-Fi."}
+                      {search ? "No devices matched your search" : "No registered devices yet. A device is listed here once a caregiver signs up with it."}
                     </td>
                   </tr>
                 ) : (
